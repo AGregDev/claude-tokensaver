@@ -100,7 +100,7 @@ const agent = ({ toolUseId, prompt, description, tokens, results, parentAgentId,
     )
     const model = spawn.model ?? explicitModel ?? OPUS
 
-    apply(onSpawned(session, { toolUseId, agentId, isDenied: false }))
+    apply(onSpawned(session, { toolUseId, agentId, isDenied: false, resolvedModel: model }))
     apply(
       onStepUsage(session, {
         turnId: `t-${agentId}`,

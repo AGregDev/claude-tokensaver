@@ -29,10 +29,20 @@ import { formatTokens } from '../ui/format.ts'
 
 export type AgentStatus = 'running' | 'retrying' | 'done' | 'failed' | 'planned'
 
+/**
+ * How an agent type gets its model when nobody names one: from its parent, or
+ * from its own definition. Only the first kind is tokensaver's to route.
+ */
+export type AgentTypeModel = 'inherits' | 'own-model'
+
 /** One sub-agent in the delegation tree. */
 export type AgentNode = {
   /** The Agent tool call it belongs to. */
   key: string
+  subagentType: string
+  parentModel: string
+  /** True for the first, untouched spawn of an agent type: it shows how the type picks its model. */
+  isProbe: boolean
   agentId: string | undefined
   parentAgentId: string | undefined
   label: string
@@ -79,6 +89,8 @@ export type Session = {
   keptOut: number
   savedHistory: readonly number[]
   agents: readonly AgentNode[]
+  /** What this session has seen of each agent type; a type not listed has not been observed yet. */
+  agentTypes: Readonly<Record<string, AgentTypeModel>>
   /** Delegations of the turn in progress, by key; the next prompt reads them to judge that turn. */
   turnKeys: readonly string[]
   /** Tiers to add to every routing decision this turn (after a user rejection). */
@@ -168,6 +180,7 @@ export const hydrate = (input: HydrateInput): Step<undefined> => {
     keptOut: 0,
     savedHistory: [],
     agents: [],
+    agentTypes: {},
     turnKeys: [],
     boost: 0,
     isHintActive: false,
@@ -311,17 +324,32 @@ export const onSpawn = (
   const label = shorten(input.description === '' ? input.prompt : input.description)
   const score = scoreTask({ text: input.prompt, description: input.description })
   const decision = routeTier(score, session.thresholds, session.boost)
-  const routing = input.isPinned
-    ? { model: undefined, tier: tierOfModel(input.parentModel), note: 'model is fixed by the spawn' }
-    : resolveSpawnModel(decision, score, {
+  const known = session.agentTypes[input.subagentType]
+  // An agent type may name its own model, and a spawn does not say whether it does. So
+  // tokensaver sets a model only where that cannot override the type's choice: on a retry of
+  // its own, on a model the caller named (which it only ever raises), or on a type it has
+  // watched inherit its parent's model.
+  const canRoute =
+    !input.isPinned &&
+    (existing?.pendingTier !== undefined || input.explicitModel !== undefined || known === 'inherits')
+  const routing = canRoute
+    ? resolveSpawnModel(decision, score, {
         parentModel: input.parentModel,
         explicitModel: input.explicitModel,
         forcedTier: existing?.pendingTier,
       })
+    : { model: undefined, tier: undefined, note: 'the agent type picks its own model' }
   const isRouted = routing.model !== undefined
   const isDryRun = session.config.isDryRun
   const node: AgentNode = {
     key: input.toolUseId,
+    subagentType: input.subagentType,
+    parentModel: input.parentModel,
+    isProbe:
+      existing === undefined &&
+      known === undefined &&
+      !input.isPinned &&
+      input.explicitModel === undefined,
     agentId: undefined,
     parentAgentId: input.parentAgentId,
     label,
@@ -384,9 +412,21 @@ export type SpawnedInput = {
   toolUseId: string
   agentId: string | undefined
   isDenied: boolean
+  /** The model Claude Code resolved for the sub-agent. */
+  resolvedModel?: string | undefined
 }
 
-/** The spawn settled: remembers the agent's id, or drops a spawn that was refused. */
+const isSameModel = (a: string, b: string): boolean => {
+  const rank = rankOfModel(a)
+
+  return a === b || (rank !== undefined && rank === rankOfModel(b))
+}
+
+/**
+ * The spawn settled: remembers the agent's id, and from an untouched first
+ * spawn learns whether its agent type inherits the parent's model. A refused
+ * spawn is dropped.
+ */
 export const onSpawned = (session: Session, input: SpawnedInput): Step<undefined> => {
   const node = session.agents.find(agent => agent.key === input.toolUseId)
 
@@ -398,7 +438,34 @@ export const onSpawned = (session: Session, input: SpawnedInput): Step<undefined
     return still(replaceAgent(session, { ...node, status: 'failed', isRecorded: true }), undefined)
   }
 
-  return still(replaceAgent(session, { ...node, agentId: input.agentId }), undefined)
+  const started: AgentNode = {
+    ...node,
+    agentId: input.agentId,
+    tier: node.isRouted ? node.tier : (tierOfModel(input.resolvedModel) ?? node.tier),
+  }
+
+  if (!node.isProbe || input.resolvedModel === undefined) {
+    return still(replaceAgent(session, started), undefined)
+  }
+
+  const learned: AgentTypeModel = isSameModel(input.resolvedModel, node.parentModel)
+    ? 'inherits'
+    : 'own-model'
+  const note =
+    learned === 'inherits'
+      ? `"${node.subagentType}" agents inherit their model: routing them from now on`
+      : `"${node.subagentType}" agents choose their own model: left alone`
+
+  return still(
+    withNote(
+      {
+        ...replaceAgent(session, started),
+        agentTypes: { ...session.agentTypes, [node.subagentType]: learned },
+      },
+      note,
+    ),
+    undefined,
+  )
 }
 
 /** Books a finished delegation: its outcome, what it teaches, and what it saved. */

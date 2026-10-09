@@ -245,6 +245,7 @@ export const register: Register = (on, options) => {
         toolUseId,
         agentId: started.agentId,
         isDenied: started.deny !== undefined,
+        resolvedModel: started.model,
       }),
     )
 

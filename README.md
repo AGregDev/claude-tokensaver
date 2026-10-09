@@ -52,6 +52,11 @@ Every adjustment after the first pick moves up, never down:
 - A task that looks security-sensitive, destructive or production-touching always gets the top tier, and is never run below the model it would have had without tokensaver.
 - A model Claude named itself is respected; tokensaver only ever raises it, and only for risky work.
 
+An agent type can name its own model in its definition, and a spawn does not say whether it does. So tokensaver leaves the first spawn of each agent type in a session untouched and watches which model Claude Code resolves for it:
+
+- If it resolves to the parent's model, the type inherits, and tokensaver routes that type from then on.
+- If it resolves to anything else, the type brings its own model (the built-in `Explore` agent does), and tokensaver never reroutes it.
+
 Forks, teammates and workflow agents are left alone, and so is any session whose model family tokensaver does not recognise.
 
 The main conversation's own model is not switched. Changing models mid-session invalidates the prompt cache, which costs more than routing would save.
@@ -146,6 +151,7 @@ Each guarantee below is enforced by a test, and the tests are part of CI.
 | :- | :- |
 | Risky, destructive or production-touching work is never downgraded | A property test over every risky prompt, parent model and named model, under default thresholds and under the loosest thresholds learning could ever produce |
 | Escalation only moves up | A property test over every tier, check result, retry count and flag: the retry is exactly one tier higher or does not happen |
+| An agent type's own model is never overridden | A property test over every task and parent model, for a type known to bring its own model and for one not yet seen; a test inside Claude Code confirms it against the real `agent.spawn` event |
 | Permission decisions are never overridden | The mod has no `tool.check` hook, so it cannot approve anything; a test inside Claude Code confirms `deny`, `ask` and `allow` come back unchanged, and that a denied call is returned untouched and not retried |
 | It stacks with other mods | Every hook passes the event on with `next`, and every hook that could gate an event has a `.catch` that passes it on unchanged if the hook fails |
 | It degrades instead of breaking | A failed store, environment or display call never fails the hook that made it, and a test runs the mod with none of them available. When no per-request usage arrives, the meter falls back to turn totals |
@@ -183,6 +189,8 @@ It does not call a model, start a process, make a network request, read your fil
 ## Limits worth knowing
 
 - The heuristics read text. They can misjudge a task, which is why every unsure case goes up a tier and why risk keywords are deliberately broad. A prompt that mentions "delete" or "production" in passing is treated as risky and gets no cheaper model.
+- The first sub-agent of each agent type in a session is never rerouted, because that spawn is how tokensaver learns whether the type inherits its model. A session with a single sub-agent saves nothing by routing.
+- The delegation hint is a prediction from the prompt's wording. It cannot see how big the repository is, so on a small one Claude may sensibly ignore it; the hint's cost (about 35 tokens) then shows as a small negative saving.
 - "Failing tests" and "unsure" are detected from the sub-agent's answer text, so a failure the sub-agent does not report is not caught.
 - A background sub-agent's result cannot be retried, because Claude has already moved on. Its outcome is still logged and still tightens the thresholds.
 - The savings figures are estimates built on the weights above, not a bill.

@@ -24,7 +24,11 @@ export const RISKY_PROMPT = 'find every place the production database password i
 
 export type Options = Readonly<Record<string, unknown>>
 
-export const startSession = (options: Options = {}, stored: { log?: unknown; thresholds?: unknown; settings?: unknown } = {}): Session =>
+/** A session before it has seen any sub-agent start. */
+export const freshSession = (
+  options: Options = {},
+  stored: { log?: unknown; thresholds?: unknown; settings?: unknown } = {},
+): Session =>
   hydrate({
     options,
     storedLog: stored.log,
@@ -32,6 +36,15 @@ export const startSession = (options: Options = {}, stored: { log?: unknown; thr
     storedSettings: stored.settings,
     noColor: undefined,
   }).session
+
+/** A session that has already watched a general-purpose agent inherit its parent's model. */
+export const startSession = (
+  options: Options = {},
+  stored: { log?: unknown; thresholds?: unknown; settings?: unknown } = {},
+): Session => ({
+  ...freshSession(options, stored),
+  agentTypes: { 'general-purpose': 'inherits' },
+})
 
 export const outcome = (partial: Partial<Outcome> & { seq: number }): Outcome => ({
   at: 1,
@@ -116,7 +129,14 @@ export class Stream {
       const model = spawn.model ?? explicitModel ?? input.parentModel ?? OPUS
 
       models.push(spawn.model)
-      this.apply(onSpawned(this.session, { toolUseId: input.toolUseId, agentId, isDenied: false }))
+      this.apply(
+        onSpawned(this.session, {
+          toolUseId: input.toolUseId,
+          agentId,
+          isDenied: false,
+          resolvedModel: model,
+        }),
+      )
 
       const usage = { model, input: input.tokens ?? 4000, output: 200, cacheWrite: 0 }
 

@@ -111,8 +111,49 @@ const world = (on: On, env: Readonly<Record<string, string>> = {}): World => {
   return seen
 }
 
+type Spawner = { agent: { spawn: (e: typeof SPAWN & { tool_use_id: string; prompt: string }) => Promise<unknown> } }
+
+/**
+ * tokensaver only observes the first spawn of an agent type. This plays that
+ * spawn, in which the stub resolves the parent's model, and forgets it.
+ */
+const learn = async ($: Spawner, seen: World): Promise<void> => {
+  await $.agent.spawn({ ...SPAWN, tool_use_id: 'warm-up', prompt: 'hello there' })
+  seen.models.length = 0
+  seen.toasts.length = 0
+}
+
+test('observes the first spawn of an agent type, then routes that type', async ($, on) => {
+  const seen = world(on)
+
+  await $.agent.spawn({ ...SPAWN, tool_use_id: 'call-1', prompt: SEARCH })
+  await $.agent.spawn({ ...SPAWN, tool_use_id: 'call-2', prompt: SEARCH })
+
+  expect(seen.models).toEqual([undefined, 'haiku'])
+})
+
+test('never reroutes an agent type that brings its own model', async ($, on) => {
+  const models: (string | undefined)[] = []
+
+  mock.clock(on)
+  // This type always resolves to its own model, whatever the parent runs on.
+  on('agent.spawn', (_$, e) => {
+    models.push(e.model)
+
+    return { model: e.model ?? 'claude-sonnet-5-5', agentId: `agent-${String(models.length)}` }
+  })
+
+  for (const id of ['call-1', 'call-2', 'call-3']) {
+    await $.agent.spawn({ ...SPAWN, tool_use_id: id, prompt: SEARCH, subagentType: 'architect' })
+  }
+
+  expect(models).toEqual([undefined, undefined, undefined])
+})
+
 test('routes a mechanical sub-agent to haiku and says so', async ($, on) => {
   const seen = world(on)
+
+  await learn($, seen)
 
   const started = await $.agent.spawn({ ...SPAWN, tool_use_id: 'call-1', prompt: SEARCH })
 
@@ -145,6 +186,8 @@ test('leaves a fork alone', async ($, on) => {
 test('dry-run shows what it would do and changes nothing', { options: { dryRun: true } }, async ($, on) => {
   const seen = world(on)
 
+  await learn($, seen)
+
   const entered = await $.prompt.submit({ text: SEARCH, wait: false, origin: { kind: 'composer' } })
   await $.agent.spawn({ ...SPAWN, tool_use_id: 'call-1', prompt: SEARCH })
 
@@ -169,6 +212,8 @@ test('the master switch off passes everything through', { options: { enabled: fa
 
 test('/tokensaver off and on toggles routing, and answers outside the transcript', async ($, on) => {
   const seen = world(on)
+
+  await learn($, seen)
 
   const off = await $.command.run({ ...COMMAND, args: 'off' })
   await $.agent.spawn({ ...SPAWN, tool_use_id: 'call-1', prompt: SEARCH })
@@ -227,6 +272,8 @@ test('retries a failed Agent call once, one tier up', async ($, on) => {
       : { result: 'Found 14 usages.', text: 'Found 14 usages.' }
   })
 
+  await learn($, seen)
+
   const result = await $.tool.call({ tool: 'Agent', description: 'search usages', prompt: SEARCH })
 
   expect(calls).toBe(2)
@@ -248,6 +295,8 @@ test('returns a denied Agent call untouched and never retries it', async ($, on)
 
     return { deny: 'Denied by a permission rule.' }
   })
+
+  await learn($, seen)
 
   const result = await $.tool.call({ tool: 'Agent', description: 'search usages', prompt: SEARCH })
 
@@ -365,8 +414,9 @@ test('keeps working when the store and the environment are unavailable', async (
 
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' })
   await $.agent.spawn({ ...SPAWN, tool_use_id: 'call-1', prompt: SEARCH })
+  await $.agent.spawn({ ...SPAWN, tool_use_id: 'call-2', prompt: SEARCH })
 
-  expect(models).toEqual(['haiku'])
+  expect(models).toEqual([undefined, 'haiku'])
 })
 
 test('never changes a permission decision', async ($, on) => {
