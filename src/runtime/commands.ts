@@ -1,6 +1,7 @@
 export type Command =
   | { kind: 'status' }
   | { kind: 'help' }
+  | { kind: 'doctor' }
   | { kind: 'dashboard' }
   | { kind: 'reset' }
   | { kind: 'enable'; value: boolean }
@@ -20,6 +21,7 @@ export const HELP_TEXT = [
   '/tokensaver motion [on|off]    animations',
   '/tokensaver export [path]      write the local outcome log as JSON',
   '/tokensaver reset        clear the outcome log and learned thresholds',
+  '/tokensaver doctor       what tokensaver knows and what the display reported',
 ].join('\n')
 
 const switchOf = (word: string | undefined): boolean | undefined => {
@@ -42,6 +44,8 @@ export const parseCommand = (args: string): Command => {
       return { kind: 'status' }
     case 'help':
       return { kind: 'help' }
+    case 'doctor':
+      return { kind: 'doctor' }
     case 'on':
       return { kind: 'enable', value: true }
     case 'off':

@@ -61,11 +61,21 @@ Forks, teammates and workflow agents are left alone, and so is any session whose
 
 The main conversation's own model is not switched. Changing models mid-session invalidates the prompt cache, which costs more than routing would save.
 
-### Suggests delegation only when it pays
+### Knows when delegating pays, and says so
 
-For each prompt you type, tokensaver estimates whether handing the bulk of the work to a sub-agent would save tokens after the cost of the handoff. That is true for broad searches, bulk reads, repetitive edits and summarising large outputs. When it is, tokensaver adds one short line to the prompt asking Claude to delegate the bulk and work from the summary. For a small or reasoning-heavy task it adds nothing.
+You do not have to ask for sub-agents. For each prompt you type, tokensaver works out whether handing the reading to a sub-agent would cost less than Claude doing it inline, and when it would, it tells Claude to delegate.
 
-That one line is the only thing tokensaver ever puts in the model's context, and its cost is subtracted from the savings counter.
+The comparison uses measured numbers, not guesses:
+
+- **Starting a sub-agent is expensive.** Its own system prompt and tools cost 30k to 38k tokens before it reads anything, measured in live sessions.
+- **Reading inline is expensive later.** What the main loop reads stays in its context and is re-read on every following request.
+- **A cheaper model does the reading.** The sub-agent runs on the tier tokensaver routes it to, and the main context keeps only its report.
+
+How much reading a task means is estimated from the files the prompt names and, for a broad task, from the size of the repository, which tokensaver samples once per session (file names only, never contents). So "find every usage across the repo" earns a suggestion in a 600-file repository and none in a 40-file one, where a single search is cheaper than any sub-agent.
+
+When delegating wins by a clear margin, tokensaver adds one line to the prompt: about how many files, and to use one Explore sub-agent or up to three in parallel. Claude makes the final call, because it can see the code and tokensaver cannot. That line is the only thing tokensaver ever adds to the model's context for a prompt, and its cost is subtracted from the savings counter.
+
+tokensaver never starts a sub-agent itself. A sub-agent that a mod starts has not been through the safety review Claude's own actions get, and Claude Code refuses it in auto mode. Delegation stays Claude's own action.
 
 ### Escalates on failure
 
@@ -80,18 +90,23 @@ If your next prompt opens by rejecting the result ("no, that's wrong", "try agai
 
 A denied call is never retried, and neither is a turn you interrupted.
 
-## Dashboard and status line
+## What you see
 
-- **CLI**: a compact status line under the prompt with the session's tokens, the estimated savings, per-tier spend, a savings sparkline and the number of running sub-agents. `/tokensaver dashboard` opens the full pane.
-- **Desktop app**: the dashboard pane opens beside the transcript, with the context meter, per-tier spend, the delegation tree (which sub-agent got what, on which tier), and the savings trend drawn as a vector.
-- A **toast** appears when a sub-agent is rerouted or escalated.
+tokensaver changes how a session looks while work is being delegated:
 
-The spinner turns and the savings counter eases to its value only while something is happening, at four frames a second, and the timer stops when things settle.
+- **A strip above the prompt** shows who is working for whom: the main loop, a line flowing out to each running sub-agent, and each sub-agent as a pill in its tier's colour. In the desktop app it is an animated vector; in the terminal it is a line of text with a spinner. It appears while a sub-agent runs and for a few seconds after an event (routed, escalated, finished), and is gone the rest of the time.
+- **The spinner** says how many sub-agents are running and on which tier.
+- **A sub-agent's row in the transcript** is marked with the tier tokensaver chose for it, and with where it came from if it was escalated.
+- **A toast** appears when a sub-agent is rerouted or escalated.
+- **A status line** under the prompt carries the session's tokens, the estimated savings, per-tier spend and a savings sparkline.
+- **A dashboard pane** has the context meter, per-tier spend, the delegation tree and the savings trend. It opens by itself in the desktop app; in the terminal, `/tokensaver dashboard` opens it. Close it and it stays closed until you ask for it again.
+
+Animation runs only while something is happening, and the timer stops when things settle.
 
 - `NO_COLOR` (set to anything non-empty) removes every colour; state is still shown by glyphs and words.
-- The `reducedMotion` option, or `/tokensaver motion off`, freezes the spinner and shows final figures at once.
+- The `reducedMotion` option, or `/tokensaver motion off`, stops all movement and shows final figures at once.
 
-None of this reaches the model. The status line, the pane and toasts are display only, and `/tokensaver` commands answer with a dim transcript line that Claude does not read.
+None of the drawing reaches the model. A `/tokensaver` command does print one short line into the transcript, which Claude can read on later turns; that is what makes a command visible on every surface.
 
 ### What the two savings figures mean
 
@@ -111,6 +126,7 @@ The cost weights are ratios for estimating, not prices. The token meter counts n
 | `/tokensaver dry-run [on\|off]` | Only show what would have been delegated or rerouted |
 | `/tokensaver dashboard` | Open the dashboard pane |
 | `/tokensaver motion [on\|off]` | Animations |
+| `/tokensaver doctor` | What tokensaver knows (model, repository size, agent types) and what the display reported. Run this first if nothing shows |
 | `/tokensaver export [path]` | Write the outcome log as JSON to a local file (default `tokensaver-export.json`) |
 | `/tokensaver reset` | Clear the outcome log and the learned thresholds |
 | `/tokensaver help` | List the commands |
@@ -141,6 +157,8 @@ Routing is driven by two cutoffs per kind of task, and the log tunes them:
 
 The log and the thresholds live in the mod's own store on your machine (Claude Code keeps it under your Claude Code configuration directory). The log is capped at 500 entries. A corrupted log is read entry by entry; whatever does not parse is dropped and the rest is kept.
 
+The bar a delegation suggestion must clear is learned the same lopsided way. When a turn ends, the suggestion made in it is judged by what happened: if Claude declined and then read only a few files, or the sub-agent barely did more than start, the suggestion was not worth making and the bar rises by a quarter at once. If the sub-agent did real work, the bar drops by a few percent.
+
 **Nothing is sent anywhere.** The mod makes no network call at all. `/tokensaver export` writes a file on your disk, and `/tokensaver reset` deletes the log and the thresholds.
 
 ## Safety guarantees
@@ -166,31 +184,35 @@ This is the complete list, as `claude plugin validate` reads it from the source.
 
 | It hooks | To |
 | :- | :- |
-| `session.start` | Load the log and settings, register `/tokensaver` |
-| `prompt.submit` | Score the prompt; add the delegation hint when it pays |
+| `session.start` | Load the log and settings, register `/tokensaver`, sample the repository's size |
+| `session.attach` | Redraw when an app connects to the session |
+| `prompt.submit` | Score the prompt; add the delegation line when it pays |
 | `agent.spawn` | Choose the sub-agent's model |
 | `tool.call` on `Agent` only | Read the result; retry once one tier up when it fails |
-| `turn.step`, `turn.complete`, `session.measure` | Read token usage for the meter |
+| `turn.step`, `turn.complete`, `session.measure` | Read token usage for the meter, and count how much the main loop reads itself |
 | `command.run` for `tokensaver` | Answer its own command |
-| `ui.render` for its own pane | Draw the dashboard |
+| `ui.render` for its own pane, the strip above the prompt, the spinner, and tool rows | Draw the dashboard and the strip; add to the spinner; mark sub-agent rows. Every other tool row is passed on untouched |
+| `ui.close` for its own pane | Remember that you closed it |
 
 | It calls | For |
 | :- | :- |
 | `$.store.get`, `set`, `delete` | The local log, thresholds and switches |
 | `$.fs.write` | `/tokensaver export`, to the path you give |
+| `$.fs.list` | Counting the repository's files once per session: names only, a few folders deep, capped |
 | `$.env.get` | Reading `NO_COLOR`, and nothing else |
 | `$.ui.status`, `toast`, `log`, `open`, `resolve` | Display |
 | `$.state.get`, `set` | Redrawing the pane |
 | `$.clock.every` | The animation timer |
-| `$.command.register`, `$.session.surfaces` | Its command; telling the CLI from the desktop app |
+| `$.command.register`, `$.session.surfaces`, `$.session.model` | Its command; telling the CLI from the desktop app; knowing which model the session runs on |
 
-It does not call a model, start a process, make a network request, read your files, or change a permission.
+It does not call a model, start a sub-agent or a process, make a network request, read the contents of your files, or change a permission.
 
 ## Limits worth knowing
 
 - The heuristics read text. They can misjudge a task, which is why every unsure case goes up a tier and why risk keywords are deliberately broad. A prompt that mentions "delete" or "production" in passing is treated as risky and gets no cheaper model.
 - The first sub-agent of each agent type in a session is never rerouted, because that spawn is how tokensaver learns whether the type inherits its model. A session with a single sub-agent saves nothing by routing.
-- The delegation hint is a prediction from the prompt's wording. It cannot see how big the repository is, so on a small one Claude may sensibly ignore it; the hint's cost (about 35 tokens) then shows as a small negative saving.
+- The delegation estimate is built from the prompt's wording and the repository's size, not from the code. Claude can still decline a suggestion, and when it does the cost of the line (about 80 tokens) shows as a small negative saving and the bar for the next suggestion rises.
+- Delegation only happens when Claude acts on the suggestion. tokensaver cannot make it happen, by design.
 - "Failing tests" and "unsure" are detected from the sub-agent's answer text, so a failure the sub-agent does not report is not caught.
 - A background sub-agent's result cannot be retried, because Claude has already moved on. Its outcome is still logged and still tightens the thresholds.
 - The savings figures are estimates built on the weights above, not a bill.

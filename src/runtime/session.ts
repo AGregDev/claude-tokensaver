@@ -14,7 +14,14 @@ import {
   summarizeLog,
 } from '../core/log.ts'
 import type { Outcome } from '../core/log.ts'
-import { DEFAULT_THRESHOLDS, decideDelegation, resolveSpawnModel, routeTier } from '../core/route.ts'
+import {
+  DEFAULT_MIN_SAVING,
+  decideDelegation,
+  judgeHint,
+  parseMinSaving,
+  tuneMinSaving,
+} from '../core/delegate.ts'
+import { DEFAULT_THRESHOLDS, resolveSpawnModel, routeTier } from '../core/route.ts'
 import type { Thresholds } from '../core/route.ts'
 import { contextSavings, estimateTokens, routingSavings } from '../core/savings.ts'
 import { scoreTask } from '../core/score.ts'
@@ -98,10 +105,40 @@ export type Session = {
   isHintActive: boolean
   /** Turns whose usage arrived step by step, so their totals are not counted twice. */
   steppedTurns: readonly string[]
+  /** The bar a delegation suggestion must clear, tuned from how suggestions turn out. */
+  minSaving: number
+  /** What the session knows about where it runs. */
+  facts: SessionFacts
+  /** Files the main loop read or searched itself in the turn in progress. */
+  mainReads: number
+  /** The newest event worth showing above the prompt, for a few seconds. */
+  flash: Flash | undefined
+  /** The clock as of the last event or animation frame. */
+  now: number
+  /** What the display layer reported, for `/tokensaver doctor`. */
+  diagnostics: readonly string[]
   notes: readonly string[]
   frame: number
   shownSaved: number
 }
+
+export type SessionFacts = {
+  /** Files under the working directory, sampled once; undefined until counted. */
+  repoFiles: number | undefined
+  /** The session's model id; undefined until Claude Code has said. */
+  model: string | undefined
+}
+
+export type FlashTone = 'route' | 'escalate' | 'done' | 'fail' | 'info'
+
+export type Flash = {
+  text: string
+  tone: FlashTone
+  at: number
+}
+
+/** How long an event stays above the prompt after it happens. */
+export const FLASH_MS = 6000
 
 export type Effect =
   | { kind: 'toast'; text: string }
@@ -122,6 +159,7 @@ const MAX_AGENTS = 24
 const MAX_HISTORY = 32
 const MAX_NOTES = 4
 const MAX_STEPPED_TURNS = 64
+const MAX_DIAGNOSTICS = 12
 const HINT_NOUNS: Readonly<Record<TaskType, string>> = {
   search: 'search',
   'bulk-read': 'read-through',
@@ -131,6 +169,12 @@ const HINT_NOUNS: Readonly<Record<TaskType, string>> = {
   reasoning: 'problem',
   general: 'task',
 }
+
+const withFlash = (session: Session, text: string, tone: FlashTone, at: number): Session => ({
+  ...session,
+  flash: { text, tone, at },
+  now: Math.max(session.now, at),
+})
 
 const still = <Reply>(session: Session, reply: Reply): Step<Reply> => ({
   session,
@@ -161,6 +205,7 @@ export type HydrateInput = {
   storedLog: unknown
   storedThresholds: unknown
   storedSettings: unknown
+  storedDelegation?: unknown
   noColor: string | undefined
 }
 
@@ -185,6 +230,12 @@ export const hydrate = (input: HydrateInput): Step<undefined> => {
     boost: 0,
     isHintActive: false,
     steppedTurns: [],
+    minSaving: parseMinSaving(input.storedDelegation),
+    facts: { repoFiles: undefined, model: undefined },
+    mainReads: 0,
+    flash: undefined,
+    now: 0,
+    diagnostics: [],
     notes: [],
     frame: 0,
     shownSaved: 0,
@@ -206,6 +257,17 @@ export const hydrate = (input: HydrateInput): Step<undefined> => {
     reply: undefined,
   }
 }
+
+/** What the display layer learned about the session: its model and how big the repository is. */
+export const onFacts = (session: Session, facts: Partial<SessionFacts>): Step<undefined> =>
+  still({ ...session, facts: { ...session.facts, ...facts } }, undefined)
+
+/** Keeps a line for `/tokensaver doctor`: what was asked of the display and what came back. */
+export const onDiagnostic = (session: Session, line: string): Step<undefined> =>
+  still(
+    { ...session, diagnostics: [...session.diagnostics, line].slice(-MAX_DIAGNOSTICS) },
+    undefined,
+  )
 
 export type PromptInput = {
   text: string
@@ -270,21 +332,41 @@ export const onPrompt = (
   }
 
   const score = scoreTask({ text: input.text })
-  const delegation = decideDelegation(score)
+  const delegation = decideDelegation(score, {
+    repoFiles: session.facts.repoFiles,
+    parentRank: rankOfModel(session.facts.model),
+    minSaving: session.minSaving,
+  })
   const shouldHint =
     delegation.shouldDelegate && session.config.hasContextHint && !session.config.isDryRun
-  const hint = `[tokensaver] This looks like a broad ${HINT_NOUNS[score.taskType]}. To keep the main context small, hand the bulk of it to one sub-agent and work from its summary.`
+  const helpers =
+    delegation.agents > 1
+      ? `up to ${String(delegation.agents)} Explore sub-agents in parallel, one per independent part,`
+      : 'one Explore sub-agent'
+  // Directive, because Claude only delegates on a clear instruction; with a way out, because
+  // this estimate is made from the wording and Claude can see the code.
+  const hint = `[tokensaver] This ${HINT_NOUNS[score.taskType]} likely means reading about ${String(delegation.estimatedFiles)} files. Before reading them yourself, hand that reading to ${helpers} with the Agent tool, and work from what they report. Skip this only if one or two targeted lookups would answer it.`
 
   if (delegation.shouldDelegate && session.config.isDryRun) {
-    const text = `tokensaver dry-run: would suggest delegating this ${HINT_NOUNS[score.taskType]} (~${formatTokens(delegation.estimatedSavings)} tokens kept out of the main context)`
+    const text = `tokensaver dry-run: would suggest delegating this ${HINT_NOUNS[score.taskType]} (about ${String(delegation.estimatedFiles)} files, ~${formatTokens(delegation.estimatedSaving)} tokens saved)`
     effects.push({ kind: 'toast', text })
     next = withNote(next, text.replace('tokensaver ', ''))
+  }
+
+  if (shouldHint) {
+    next = withFlash(
+      next,
+      `suggested delegating about ${String(delegation.estimatedFiles)} files of reading`,
+      'info',
+      input.now,
+    )
   }
 
   return {
     session: {
       ...next,
       turnKeys: [],
+      mainReads: 0,
       boost: isRejected ? 1 : 0,
       isHintActive: shouldHint,
       // The hint is the one thing tokensaver adds to the model's context: count it as a cost.
@@ -306,6 +388,7 @@ export type SpawnInput = {
   isBackground: boolean
   /** True for a fork, a teammate or a workflow agent: their model is not tokensaver's to set. */
   isPinned: boolean
+  now?: number | undefined
 }
 
 /**
@@ -402,7 +485,14 @@ export const onSpawn = (
       : `tokensaver: escalated "${label}" ${existing.escalatedFrom} → ${target}`
 
   return {
-    session: withNote(tracked, text.replace('tokensaver: ', '')),
+    session: withFlash(
+      withNote(tracked, text.replace('tokensaver: ', '')),
+      existing?.escalatedFrom === undefined
+        ? `${label} → ${target}`
+        : `${label} escalated ${existing.escalatedFrom} → ${target}`,
+      existing?.escalatedFrom === undefined ? 'route' : 'escalate',
+      input.now ?? session.now,
+    ),
     effects: [{ kind: 'toast', text }],
     reply: { model: routing.model },
   }
@@ -483,7 +573,12 @@ const finalize = (session: Session, node: AgentNode, signal: CheckSignal, now: n
       : 0
   const done: AgentNode = { ...node, status: isSuccess ? 'done' : 'failed', isRecorded: true }
   const settled: Session = {
-    ...replaceAgent(session, done),
+    ...withFlash(
+      replaceAgent(session, done),
+      `${node.label} ${isSuccess ? 'done' : `failed (${signalText(signal)})`} · ${formatTokens(node.tokens)}${node.tier === undefined ? '' : ` on ${node.tier}`}`,
+      isSuccess ? 'done' : 'fail',
+      now,
+    ),
     // Two different savings, kept apart: adding them would count the same tokens twice.
     saved: session.saved + routed - node.wastedTokens,
     keptOut: session.keptOut + kept,
@@ -585,7 +680,12 @@ export const onAgentResult = (
   return {
     session: withNote(
       {
-        ...replaceAgent(session, retrying),
+        ...withFlash(
+          replaceAgent(session, retrying),
+          `${node.label} failed on ${node.tier}, retrying on ${plan.to}`,
+          'escalate',
+          input.now,
+        ),
         // Tighten now, not when the retry finishes: the cheaper tier has already failed.
         thresholds: tighten(session.thresholds, node.taskType, node.tier, nextSeq(session.outcomes)),
       },
@@ -625,6 +725,8 @@ export type StepUsageInput = {
   turnId: string
   agentId: string | undefined
   usage: Usage
+  /** Read, Grep and Glob calls the response asked for. */
+  reads?: number | undefined
 }
 
 /** One model request finished: adds its tokens to the meter and to its agent. */
@@ -638,6 +740,7 @@ export const onStepUsage = (session: Session, input: StepUsageInput): Step<undef
   return still(
     {
       ...applyUsage(session, input.agentId, input.usage),
+      mainReads: session.mainReads + (input.agentId === undefined ? (input.reads ?? 0) : 0),
       steppedTurns: session.steppedTurns.includes(stepKey)
         ? session.steppedTurns
         : [...session.steppedTurns, stepKey].slice(-MAX_STEPPED_TURNS),
@@ -671,10 +774,40 @@ export const onTurnComplete = (session: Session, input: TurnCompleteInput): Step
       : applyUsage(session, input.agentId, input.usage)
 
   if (input.agentId === undefined) {
-    return still(
-      { ...counted, savedHistory: [...counted.savedHistory, counted.saved].slice(-MAX_HISTORY) },
-      undefined,
-    )
+    const closed: Session = {
+      ...counted,
+      savedHistory: [...counted.savedHistory, counted.saved].slice(-MAX_HISTORY),
+    }
+
+    if (!closed.isHintActive || input.isAborted) {
+      return still(closed, undefined)
+    }
+
+    // The suggestion is judged by what the turn then did, and the bar moves with the verdict.
+    const verdict = judgeHint({
+      largestAgentTokens: Math.max(
+        0,
+        ...closed.agents.filter(agent => closed.turnKeys.includes(agent.key)).map(agent => agent.tokens),
+      ),
+      mainReads: closed.mainReads,
+    })
+    const minSaving = tuneMinSaving(closed.minSaving, verdict)
+    const judged: Session = { ...closed, isHintActive: false, minSaving }
+
+    if (minSaving === closed.minSaving) {
+      return still(judged, undefined)
+    }
+
+    return {
+      session: withNote(
+        judged,
+        verdict === 'over-fired'
+          ? 'delegation suggestion was not needed: raising the bar'
+          : 'delegation suggestion paid off',
+      ),
+      effects: [{ kind: 'save-log' }],
+      reply: undefined,
+    }
   }
 
   const node = counted.agents.find(agent => agent.agentId === input.agentId)
@@ -710,23 +843,32 @@ export const onMeasure = (
 export const activeCount = (session: Session): number =>
   session.agents.filter(agent => agent.status === 'running' || agent.status === 'retrying').length
 
-/** True while something on screen is still moving. */
+/** True while an event is recent enough to still be shown above the prompt. */
+export const hasFreshFlash = (session: Session): boolean =>
+  session.flash !== undefined && session.now - session.flash.at < FLASH_MS
+
+/**
+ * True while the animation clock is needed. A fresh event keeps it running
+ * even under reduced motion, because the clock is also what takes the event
+ * down again; reduced motion stops only the movement.
+ */
 export const isAnimating = (session: Session): boolean =>
   session.config.isEnabled &&
-  !session.config.hasReducedMotion &&
-  (activeCount(session) > 0 || session.shownSaved !== session.saved)
+  (hasFreshFlash(session) ||
+    (!session.config.hasReducedMotion &&
+      (activeCount(session) > 0 || session.shownSaved !== session.saved)))
 
 /** One animation frame: turns the spinner and eases the saved counter toward its value. */
-export const onTick = (session: Session): Step<undefined> => {
+export const onTick = (session: Session, now = session.now): Step<undefined> => {
   if (session.config.hasReducedMotion) {
-    return still({ ...session, shownSaved: session.saved }, undefined)
+    return still({ ...session, now, shownSaved: session.saved }, undefined)
   }
 
   const gap = session.saved - session.shownSaved
   const move = Math.abs(gap) <= 3 ? gap : Math.trunc(gap / 3)
 
   return still(
-    { ...session, frame: session.frame + 1, shownSaved: session.shownSaved + move },
+    { ...session, now, frame: session.frame + 1, shownSaved: session.shownSaved + move },
     undefined,
   )
 }
@@ -748,33 +890,66 @@ const statusReport = (session: Session): string => {
     `${formatTokens(total)} tokens this session (haiku ${formatTokens(session.spend.haiku)}, sonnet ${formatTokens(session.spend.sonnet)}, opus ${formatTokens(session.spend.opus)})`,
     `~${formatTokens(session.saved)} saved by routing (estimate), ${formatTokens(session.keptOut)} kept out of the main context`,
     `${String(summary.count)} logged outcomes, ${String(Math.round(summary.cleanRate * 100))}% clean, ${String(summary.escalations)} escalations`,
-  ].join(' · ')
+  ].join('\n')
 }
 
-const withOverride = (session: Session, overrides: Overrides, text: string): Step<undefined> => {
+/** What tokensaver knows and what the display told it: the first thing to read when nothing shows. */
+const doctorReport = (session: Session): string => {
+  const types = Object.entries(session.agentTypes)
+    .map(([name, kind]) => `${name} ${kind === 'inherits' ? 'inherits' : 'has its own model'}`)
+    .join(', ')
+
+  return [
+    `tokensaver is ${modeOf(session.config)}`,
+    `session model: ${session.facts.model ?? 'not reported yet'}`,
+    `repository: ${session.facts.repoFiles === undefined ? 'not counted yet' : `about ${String(session.facts.repoFiles)} files`}`,
+    `agent types seen: ${types === '' ? 'none yet' : types}`,
+    `a delegation suggestion must save at least ${formatTokens(session.minSaving)} tokens`,
+    `colour ${session.hasNoColor ? 'off (NO_COLOR)' : 'on'}, motion ${session.config.hasReducedMotion ? 'off' : 'on'}`,
+    'display:',
+    ...(session.diagnostics.length === 0
+      ? ['  nothing reported yet']
+      : session.diagnostics.map(line => `  ${line}`)),
+  ].join('\n')
+}
+
+export type CommandReply = {
+  /** What the command prints. A command's output is a transcript row, so it is kept short. */
+  text: string
+}
+
+const answer = (session: Session, text: string, effects: readonly Effect[] = []): Step<CommandReply> => ({
+  session,
+  effects,
+  reply: { text },
+})
+
+const withOverride = (session: Session, overrides: Overrides, text: string): Step<CommandReply> => {
   const merged = { ...session.overrides, ...overrides }
 
-  return {
-    session: { ...session, overrides: merged, config: applyOverrides(session.config, merged) },
-    effects: [{ kind: 'save-settings' }, { kind: 'log', text }],
-    reply: undefined,
-  }
+  return answer(
+    { ...session, overrides: merged, config: applyOverrides(session.config, merged) },
+    text,
+    [{ kind: 'save-settings' }],
+  )
 }
 
 /**
- * `/tokensaver <args>`. Every answer is an effect drawn outside the
- * transcript the model reads, so a command never adds tokens to its context.
+ * `/tokensaver <args>`. Every command answers with a line of text, so it is
+ * visible on every surface even where a pane or a toast is not.
  */
-export const onCommand = (session: Session, args: string, now: number): Step<undefined> => {
+export const onCommand = (session: Session, args: string, now: number): Step<CommandReply> => {
   const command = parseCommand(args)
 
   switch (command.kind) {
     case 'status':
-      return { session, effects: [{ kind: 'log', text: statusReport(session) }], reply: undefined }
+      return answer(session, statusReport(session))
     case 'help':
-      return { session, effects: [{ kind: 'log', text: HELP_TEXT }], reply: undefined }
+      return answer(session, HELP_TEXT)
+    case 'doctor':
+      return answer(session, doctorReport(session))
     case 'dashboard':
-      return { session, effects: [{ kind: 'open-dashboard' }], reply: undefined }
+      return answer(session, 'tokensaver dashboard opened', [{ kind: 'open-dashboard' }])
     case 'enable':
       return withOverride(
         session,
@@ -796,45 +971,31 @@ export const onCommand = (session: Session, args: string, now: number): Step<und
       )
     }
     case 'reset':
-      return {
-        session: {
+      return answer(
+        {
           ...session,
           outcomes: [],
           thresholds: DEFAULT_THRESHOLDS,
+          minSaving: DEFAULT_MIN_SAVING,
           saved: 0,
           keptOut: 0,
           shownSaved: 0,
           savedHistory: [],
         },
-        effects: [
-          { kind: 'clear-log' },
-          { kind: 'log', text: 'tokensaver: outcome log and learned thresholds cleared' },
-        ],
-        reply: undefined,
-      }
+        'tokensaver: outcome log and everything learned from it cleared',
+        [{ kind: 'clear-log' }],
+      )
     case 'export': {
       const path = command.path ?? DEFAULT_EXPORT_PATH
       const json = JSON.stringify(buildExport(session.outcomes, session.thresholds, now), null, 2)
 
-      return {
+      return answer(
         session,
-        effects: [
-          { kind: 'export', path, json },
-          {
-            kind: 'log',
-            text: `tokensaver: wrote ${String(session.outcomes.length)} outcomes to ${path} (local file, nothing was sent anywhere)`,
-          },
-        ],
-        reply: undefined,
-      }
+        `tokensaver: wrote ${String(session.outcomes.length)} outcomes to ${path} (local file, nothing was sent anywhere)`,
+        [{ kind: 'export', path, json }],
+      )
     }
     case 'unknown':
-      return {
-        session,
-        effects: [
-          { kind: 'log', text: `tokensaver: unknown command "${command.word}"\n${HELP_TEXT}` },
-        ],
-        reply: undefined,
-      }
+      return answer(session, `tokensaver: unknown command "${command.word}"\n${HELP_TEXT}`)
   }
 }

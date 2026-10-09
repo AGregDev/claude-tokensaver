@@ -24,26 +24,30 @@ export const RISKY_PROMPT = 'find every place the production database password i
 
 export type Options = Readonly<Record<string, unknown>>
 
+export type Stored = { log?: unknown; thresholds?: unknown; settings?: unknown; delegation?: unknown }
+
 /** A session before it has seen any sub-agent start. */
 export const freshSession = (
   options: Options = {},
-  stored: { log?: unknown; thresholds?: unknown; settings?: unknown } = {},
+  stored: Stored = {},
 ): Session =>
   hydrate({
     options,
     storedLog: stored.log,
     storedThresholds: stored.thresholds,
     storedSettings: stored.settings,
+    storedDelegation: stored.delegation,
     noColor: undefined,
   }).session
 
 /** A session that has already watched a general-purpose agent inherit its parent's model. */
 export const startSession = (
   options: Options = {},
-  stored: { log?: unknown; thresholds?: unknown; settings?: unknown } = {},
+  stored: Stored = {},
 ): Session => ({
   ...freshSession(options, stored),
   agentTypes: { 'general-purpose': 'inherits' },
+  facts: { repoFiles: 400, model: OPUS },
 })
 
 export const outcome = (partial: Partial<Outcome> & { seq: number }): Outcome => ({

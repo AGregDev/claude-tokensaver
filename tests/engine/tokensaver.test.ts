@@ -4,8 +4,8 @@
  * Claude Code beneath it. No session, sign-in or network is involved.
  */
 import { expect, mock, test } from 'claude-code/testing'
-import type { On } from 'claude-code'
-import type { MockClock } from 'claude-code/testing'
+import type { FsEntry, On } from 'claude-code'
+import type { Engine, MockClock } from 'claude-code/testing'
 
 const OPUS = 'claude-opus-5-5'
 const SEARCH = 'find all usages of parseConfig across the repo and list every file'
@@ -50,6 +50,12 @@ type World = {
   saved: Map<string, unknown>
   files: Map<string, string>
   clock: MockClock
+  /** Pane ids the mod asked Claude Code to open. */
+  opened: string[]
+  /** What `$.session.surfaces()` answers; a test changes it to attach another app. */
+  surfaces: ('terminal' | 'desktop')[]
+  /** What every folder listing answers. */
+  entries: FsEntry[]
 }
 
 /** Stands in for Claude Code beneath the mod, and records what reached it. */
@@ -62,6 +68,9 @@ const world = (on: On, env: Readonly<Record<string, string>> = {}): World => {
     saved: new Map(),
     files: new Map(),
     clock: mock.clock(on),
+    opened: [],
+    surfaces: ['terminal'],
+    entries: [],
   }
 
   mock.env(on, env)
@@ -96,9 +105,22 @@ const world = (on: On, env: Readonly<Record<string, string>> = {}): World => {
 
     return { value: undefined }
   })
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.open', (_$, e) => {
+    seen.opened.push(e.id)
+
+    return { value: { isPlaced: true } }
+  })
   on('command.register', (_$, e) => ({ value: { command: e.name } }))
-  on('session.surfaces', () => ({ value: ['terminal'] }))
+  on('session.surfaces', () => ({ value: seen.surfaces }))
+  on('session.model', () => ({ value: OPUS }))
+  on('session.attach', (_$, e) => ({ clientId: e.clientId }))
+  on('fs.list', () => ({ value: seen.entries }))
+  // What Claude Code itself would draw at a site the mod wraps: its props, as text to read back.
+  on('ui.render', (_$, e) => ({
+    type: 'Text',
+    props: {},
+    children: [e.component === 'Spinner' ? `engine spinner${e.props.suffix}` : `engine ${e.component}`],
+  }))
   on('session.start', () => ({ cwd: '/work' }))
   on('agent.spawn', (_$, e) => {
     seen.models.push(e.model)
@@ -111,14 +133,23 @@ const world = (on: On, env: Readonly<Record<string, string>> = {}): World => {
   return seen
 }
 
-type Spawner = { agent: { spawn: (e: typeof SPAWN & { tool_use_id: string; prompt: string }) => Promise<unknown> } }
-
 /**
  * tokensaver only observes the first spawn of an agent type. This plays that
- * spawn, in which the stub resolves the parent's model, and forgets it.
+ * spawn to its end, the stub resolving the parent's model, and forgets it.
  */
-const learn = async ($: Spawner, seen: World): Promise<void> => {
-  await $.agent.spawn({ ...SPAWN, tool_use_id: 'warm-up', prompt: 'hello there' })
+const learn = async ($: Engine, seen: World): Promise<void> => {
+  const started = await $.agent.spawn({ ...SPAWN, tool_use_id: 'warm-up', prompt: 'hello there', background: true })
+
+  await $.turn.complete({
+    turnId: 'warm-up',
+    ...(started.agentId === undefined ? {} : { agentId: started.agentId }),
+    answer: 'ok',
+    durationMs: 1,
+    isAborted: false,
+    reason: 'answer',
+  })
+  // Long enough for the warm-up's own event to leave the strip.
+  await seen.clock.advance(10_000)
   seen.models.length = 0
   seen.toasts.length = 0
 }
@@ -210,7 +241,7 @@ test('the master switch off passes everything through', { options: { enabled: fa
   expect(seen.toasts).toEqual([])
 })
 
-test('/tokensaver off and on toggles routing, and answers outside the transcript', async ($, on) => {
+test('/tokensaver off and on toggles routing, and says so', async ($, on) => {
   const seen = world(on)
 
   await learn($, seen)
@@ -221,10 +252,9 @@ test('/tokensaver off and on toggles routing, and answers outside the transcript
   await $.agent.spawn({ ...SPAWN, tool_use_id: 'call-2', prompt: SEARCH })
 
   expect(seen.models).toEqual([undefined, 'haiku'])
-  // No `text`: nothing of the command's answer becomes a row the model reads.
-  expect(off.text).toBeUndefined()
+  // One short line, so the command is visible on every surface; nothing hidden for the model.
+  expect(off.text).toBe('tokensaver is off')
   expect(off.context).toBeUndefined()
-  expect(seen.logs).toEqual(['tokensaver is off', 'tokensaver is on'])
   expect(seen.saved.get('settings')).toEqual({ isEnabled: true })
 })
 
@@ -354,12 +384,7 @@ test('the dashboard draws on the terminal and the desktop, and its buttons work'
     await ui.unmount()
   }
 
-  expect(seen.logs).toEqual([
-    'tokensaver dry-run is on',
-    'tokensaver dry-run is off',
-    'tokensaver dry-run is on',
-    'tokensaver dry-run is off',
-  ])
+  expect(seen.saved.get('settings')).toEqual({ isDryRun: false })
 })
 
 test('the desktop draws the savings trend as a vector once there is a history', async ($, on) => {
@@ -509,4 +534,187 @@ test('animates the spinner only while a sub-agent is running', async ($, on) => 
 
   expect(seen.statuses.length).toBe(settled)
   expect(seen.statuses.at(-1)).toMatch(/^● tokensaver/u)
+})
+
+const BAND = {
+  plugin: 'tokensaver',
+  component: 'AbovePrompt',
+  viewport: { columns: 100, rows: 30 },
+  props: {
+    hasSurvey: false,
+    isWorking: true,
+    maxRows: 4,
+    bodyColumns: 80,
+    scroll: { offset: 0, bodyRows: 4 },
+    view: {},
+  },
+} as const
+
+test('draws nothing above the prompt while nothing is delegated', async ($, on) => {
+  world(on)
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...BAND, surface })
+
+    // The strip is left to Claude Code and to other mods.
+    expect((await ui.find({ type: 'Text' }))?.text).toBe('engine AbovePrompt')
+    expect(await ui.find({ type: 'Svg' })).toBeUndefined()
+    await ui.unmount()
+  }
+})
+
+test('shows who is working above the prompt: text in the terminal, an animated picture on the desktop', async ($, on) => {
+  const seen = world(on)
+
+  await learn($, seen)
+  await $.agent.spawn({ ...SPAWN, tool_use_id: 'call-1', prompt: SEARCH, description: 'search usages' })
+
+  const terminal = await $.ui.mount({ ...BAND, surface: 'terminal' })
+
+  expect(await terminal.find({ type: 'Text', text: 'tokensaver ' })).toBeDefined()
+  expect(await terminal.find({ type: 'Text', text: ' search usages' })).toBeDefined()
+  expect((await terminal.find({ type: 'Text', text: 'haiku' }))?.props['color']).toBe('success')
+  expect(await terminal.find({ type: 'Svg' })).toBeUndefined()
+  // What was already drawn there stays, beneath.
+  expect(await terminal.find({ type: 'Text', text: 'engine AbovePrompt' })).toBeDefined()
+
+  const desktop = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  const picture = await desktop.find({ type: 'Svg' })
+
+  expect(String(picture?.props['source'])).toMatch(/haiku · search usages/)
+  expect(String(picture?.props['source'])).toMatch(/<animate /)
+  expect(picture?.props['alt']).toMatch(/tokensaver main ─▸ haiku search usages/)
+  // A picture, not a frame: the frame form draws a white box in the desktop app.
+  expect(picture?.props['isInteractive']).toBeUndefined()
+  expect(await desktop.find({ type: 'Text', text: 'engine AbovePrompt' })).toBeDefined()
+})
+
+test('the picture holds still under reduced motion', { options: { reducedMotion: true } }, async ($, on) => {
+  const seen = world(on)
+
+  await learn($, seen)
+  await $.agent.spawn({ ...SPAWN, tool_use_id: 'call-1', prompt: SEARCH })
+
+  const desktop = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  const source = String((await desktop.find({ type: 'Svg' }))?.props['source'])
+
+  expect(source).toMatch(/haiku · /)
+  expect(source.includes('<animate')).toBe(false)
+})
+
+test('adds the delegation to the spinner, and leaves the spinner alone otherwise', async ($, on) => {
+  const seen = world(on)
+  const SPINNER = {
+    plugin: 'tokensaver',
+    component: 'Spinner',
+    surface: 'terminal',
+    props: { word: 'Thinking', message: null, suffix: '…', mode: 'thinking' },
+  } as const
+
+  const idle = await $.ui.mount(SPINNER)
+
+  expect((await idle.find({ type: 'Text' }))?.text).toBe('engine spinner…')
+  await idle.unmount()
+
+  await learn($, seen)
+  await $.agent.spawn({ ...SPAWN, tool_use_id: 'call-1', prompt: SEARCH })
+
+  const busy = await $.ui.mount(SPINNER)
+
+  expect((await busy.find({ type: 'Text' }))?.text).toBe('engine spinner… · 1 sub-agent on haiku')
+})
+
+test('marks the row of a sub-agent it routed, and no other row', async ($, on) => {
+  const seen = world(on)
+  const row = (tool: string, id: string) =>
+    ({
+      plugin: 'tokensaver',
+      component: 'ToolUse',
+      surface: 'terminal',
+      props: { tool_use_id: id, tool, input: {}, isRunning: true, isErrored: false, isInterrupted: false },
+    }) as const
+
+  await learn($, seen)
+  await $.agent.spawn({ ...SPAWN, tool_use_id: 'call-1', prompt: SEARCH })
+
+  const routed = await $.ui.mount(row('Agent', 'call-1'))
+
+  expect(await routed.find({ type: 'Text', text: '◆ tokensaver ' })).toBeDefined()
+  expect((await routed.find({ type: 'Text', text: 'haiku' }))?.props['bold']).toBe(true)
+  expect(await routed.find({ type: 'Text', text: 'engine ToolUse' })).toBeDefined()
+
+  for (const other of [row('Agent', 'not-routed'), row('Bash', 'call-1')]) {
+    const ui = await $.ui.mount(other)
+
+    expect(await ui.find({ type: 'Text', text: '◆ tokensaver ' })).toBeUndefined()
+    expect((await ui.find({ type: 'Text' }))?.text).toBe('engine ToolUse')
+  }
+})
+
+test('every command answers with a visible line', async ($, on) => {
+  world(on)
+
+  const status = await $.command.run({ ...COMMAND, args: '' })
+  const doctor = await $.command.run({ ...COMMAND, args: 'doctor' })
+  const dashboard = await $.command.run({ ...COMMAND, args: 'dashboard' })
+
+  expect(status.text).toMatch(/^tokensaver is on\n/)
+  expect(doctor.text).toMatch(/session model: /)
+  expect(doctor.text).toMatch(/display:/)
+  expect(dashboard.text).toBe('tokensaver dashboard opened')
+})
+
+test('opens the dashboard and re-sends the status line when the desktop app attaches', async ($, on) => {
+  const seen = world(on)
+
+  await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' })
+
+  // In the terminal the status line is enough; no pane is opened unasked.
+  expect(seen.opened).toEqual([])
+
+  const before = seen.statuses.length
+
+  seen.surfaces = ['desktop']
+  await $.session.attach({ surface: 'desktop', clientId: 'client-1' })
+
+  expect(seen.opened).toEqual(['tokensaver'])
+  expect(seen.statuses.length).toBe(before + 1)
+  expect(seen.statuses.at(-1)).toMatch(/tokensaver/)
+
+  const doctor = await $.command.run({ ...COMMAND, args: 'doctor' })
+
+  expect(doctor.text).toMatch(/desktop attached/)
+  expect(doctor.text).toMatch(/pane opened \(desktop attached\)/)
+})
+
+test('catches up at the start of a turn if the display was not ready earlier', async ($, on) => {
+  const seen = world(on)
+
+  seen.surfaces = ['desktop']
+  // No session.start and no attach reached the mod: the first prompt still brings the display in step.
+  await $.prompt.submit({ text: 'hello', wait: false, origin: { kind: 'composer' } })
+
+  expect(seen.opened).toEqual(['tokensaver'])
+  expect(seen.statuses.at(-1)).toMatch(/tokensaver/)
+})
+
+test('suggests delegation only where the repository is big enough to make it pay', async ($, on) => {
+  const seen = world(on)
+
+  seen.entries = Array.from({ length: 600 }, (_, index) => ({
+    name: `file-${String(index)}.ts`,
+    kind: 'file' as const,
+    size: 100,
+    mtimeMs: 0,
+    isLink: false,
+  }))
+  await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' })
+
+  const broad = await $.prompt.submit({ text: SEARCH, wait: false, origin: { kind: 'composer' } })
+  const doctor = await $.command.run({ ...COMMAND, args: 'doctor' })
+
+  expect(doctor.text).toMatch(/about 600 files/)
+  expect(broad.context?.[0]).toMatch(/about 48 files/)
+  expect(broad.context?.[0]).toMatch(/Explore sub-agents in parallel/)
+  expect(seen.toasts).toEqual([])
 })

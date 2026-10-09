@@ -16,3 +16,6 @@ tokensaver-export*.json
 .idea/
 .DS_Store
 Thumbs.db
+
+# Diagnostic output
+.probe/

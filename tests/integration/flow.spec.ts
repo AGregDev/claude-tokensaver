@@ -517,28 +517,33 @@ describe('commands', () => {
     const stream = new Stream(startSession())
     const before = stream.session
 
-    stream.apply(onCommand(stream.session, '', 1))
+    const reply = stream.apply(onCommand(stream.session, '', 1))
 
     expect(stream.session).toBe(before)
-    expect(stream.effects).toEqual([{ kind: 'log', text: expect.stringContaining('tokensaver is on') }])
+    expect(stream.effects).toEqual([])
+    expect(reply.text).toContain('tokensaver is on')
+    expect(reply.text.split('\n')).toHaveLength(4)
   })
 
   it('prints help, and help for a word it does not know', () => {
     const stream = new Stream(startSession())
 
-    stream.apply(onCommand(stream.session, 'help', 1))
-    stream.apply(onCommand(stream.session, 'frobnicate', 1))
+    const help = stream.apply(onCommand(stream.session, 'help', 1))
+    const unknown = stream.apply(onCommand(stream.session, 'frobnicate', 1))
 
-    expect(stream.effects[0]).toEqual({ kind: 'log', text: expect.stringContaining('/tokensaver export') })
-    expect(stream.effects[1]).toEqual({ kind: 'log', text: expect.stringContaining('unknown command "frobnicate"') })
+    expect(help.text).toContain('/tokensaver export')
+    expect(help.text).toContain('/tokensaver doctor')
+    expect(unknown.text).toContain('unknown command "frobnicate"')
+    expect(stream.effects).toEqual([])
   })
 
   it('opens the dashboard', () => {
     const stream = new Stream(startSession())
 
-    stream.apply(onCommand(stream.session, 'dashboard', 1))
+    const reply = stream.apply(onCommand(stream.session, 'dashboard', 1))
 
     expect(stream.kinds()).toEqual(['open-dashboard'])
+    expect(reply.text).toContain('opened')
   })
 
   it('resets the log and the learned thresholds', () => {

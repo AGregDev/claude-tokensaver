@@ -30,20 +30,31 @@ const ALLOWED_HOOKS = [
   'agent.spawn',
   'command.run{command=tokensaver}',
   'prompt.submit',
+  'session.attach',
   'session.measure',
   'session.start',
   'tool.call{tool=Agent}',
   'turn.complete',
   'turn.step',
+  'ui.close{id=tokensaver}',
+  'ui.render{component=AbovePrompt}',
   'ui.render{component=Pane, requestId=tokensaver}',
+  'ui.render{component=Spinner}',
+  'ui.render{component=ToolUse}',
 ]
 
-/** Every call the mod may make: display, its own local store, one local file write, one timer. */
+/**
+ * Every call the mod may make: display, its own local store, one local file
+ * write, folder listings (names only) and one timer. No `$.agent.spawn`: the
+ * mod never starts a sub-agent itself.
+ */
 const ALLOWED_CALLS = [
   '$.clock.every',
   '$.command.register',
   '$.env.get',
+  '$.fs.list',
   '$.fs.write',
+  '$.session.model',
   '$.session.surfaces',
   '$.state.get',
   '$.state.set',

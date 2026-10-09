@@ -1,8 +1,8 @@
 import { summarizeLog } from '../core/log.ts'
 import type { TaskType } from '../core/score.ts'
 import type { Tier } from '../core/tiers.ts'
-import { activeCount } from '../runtime/session.ts'
-import type { AgentNode, AgentStatus, Session, Spend } from '../runtime/session.ts'
+import { activeCount, hasFreshFlash } from '../runtime/session.ts'
+import type { AgentNode, AgentStatus, FlashTone, Session, Spend } from '../runtime/session.ts'
 import type { Theme } from './theme.ts'
 
 export type ViewAgent = {
@@ -36,6 +36,13 @@ export type View = {
   learning: { count: number; cleanRate: number; escalations: number }
   notes: readonly string[]
   frame: number
+  /** The strip above the prompt: the sub-agents running now and the newest event, while fresh. */
+  band: {
+    agents: readonly ViewAgent[]
+    flash: { text: string; tone: FlashTone } | undefined
+  }
+  /** Every sub-agent whose model tokensaver chose, for marking its row in the transcript. */
+  routed: readonly ViewAgent[]
 }
 
 const MAX_DEPTH = 4
@@ -81,6 +88,7 @@ const modeOf = (session: Session): View['mode'] => {
 
 export const toView = (session: Session): View => {
   const summary = summarizeLog(session.outcomes)
+  const agents = walk(session.agents, undefined, [])
 
   return {
     mode: modeOf(session),
@@ -94,7 +102,7 @@ export const toView = (session: Session): View => {
     shownSaved: session.shownSaved,
     keptOut: session.keptOut,
     history: session.savedHistory,
-    agents: walk(session.agents, undefined, []),
+    agents,
     activeCount: activeCount(session),
     learning: {
       count: summary.count,
@@ -103,6 +111,16 @@ export const toView = (session: Session): View => {
     },
     notes: session.notes,
     frame: session.frame,
+    band: {
+      agents: agents.filter(agent => agent.status === 'running' || agent.status === 'retrying'),
+      flash:
+        session.flash !== undefined && hasFreshFlash(session)
+          ? { text: session.flash.text, tone: session.flash.tone }
+          : undefined,
+    },
+    routed: agents.filter(agent =>
+      session.agents.some(node => node.key === agent.key && node.isRouted && !node.isDryRun),
+    ),
   }
 }
 
