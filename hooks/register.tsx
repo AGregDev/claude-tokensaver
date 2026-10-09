@@ -349,6 +349,30 @@ export const register: Register = (on, options) => {
     return { text: reply.text }
   })
 
+  // The same commands, declared as files in commands/ so the menu lists them before this
+  // module has run: `/tokensaver:doctor` is `/tokensaver doctor`. Answered here, they
+  // never reach the model; their file text is only what Claude reads if this hook is absent.
+  on(
+    'command.run',
+    {
+      command: [
+        'tokensaver:status',
+        'tokensaver:dashboard',
+        'tokensaver:doctor',
+        'tokensaver:on',
+        'tokensaver:off',
+        'tokensaver:dry-run',
+        'tokensaver:help',
+      ],
+    },
+    async ($, e) => {
+      const word = e.command.slice('tokensaver:'.length)
+      const reply = await commit($, onCommand(session, `${word} ${e.args}`, Date.now()))
+
+      return { text: reply.text }
+    },
+  ).catch((_$, e, next) => next(e))
+
   on('prompt.submit', async ($, e, next) => {
     const kind = e.origin.kind
     const model = await attempt(() => $.session.model(), undefined)

@@ -718,3 +718,22 @@ test('suggests delegation only where the repository is big enough to make it pay
   expect(broad.context?.[0]).toMatch(/Explore sub-agents in parallel/)
   expect(seen.toasts).toEqual([])
 })
+
+test('answers the commands declared as files itself, so they never reach the model', async ($, on) => {
+  const seen = world(on)
+
+  await learn($, seen)
+
+  const doctor = await $.command.run({ ...COMMAND, command: 'tokensaver:doctor', args: '' })
+  const off = await $.command.run({ ...COMMAND, command: 'tokensaver:off', args: '' })
+
+  await $.agent.spawn({ ...SPAWN, tool_use_id: 'call-1', prompt: SEARCH })
+
+  const dryRun = await $.command.run({ ...COMMAND, command: 'tokensaver:dry-run', args: 'on' })
+
+  expect(doctor.text).toMatch(/^tokensaver is on/)
+  expect(doctor.text).toMatch(/session model: /)
+  expect(off.text).toBe('tokensaver is off')
+  expect(seen.models).toEqual([undefined])
+  expect(dryRun.text).toBe('tokensaver dry-run is on')
+})

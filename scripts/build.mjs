@@ -19,6 +19,7 @@ const SHIPPED = [
   '.claude-plugin/plugin.json',
   '.claude-plugin/marketplace.json',
   'hooks',
+  'commands',
   'src',
   'types',
   'README.md',
@@ -29,6 +30,7 @@ const SHIPPED = [
 const ALLOWED_HOOKS = [
   'agent.spawn',
   'command.run{command=tokensaver}',
+  'command.run{command=tokensaver:status|tokensaver:dashboard|tokensaver:doctor|tokensaver:on|tokensaver:off|tokensaver:dry-run|tokensaver:help}',
   'prompt.submit',
   'session.attach',
   'session.measure',

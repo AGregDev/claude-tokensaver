@@ -135,6 +135,8 @@ The cost weights are ratios for estimating, not prices. The token meter counts n
 
 Switches set with a command are remembered across sessions.
 
+The most used ones are also listed in the `/` menu as `/tokensaver:status`, `/tokensaver:dashboard`, `/tokensaver:doctor`, `/tokensaver:on`, `/tokensaver:off`, `/tokensaver:dry-run` and `/tokensaver:help`. They do the same thing. They exist because `/tokensaver` itself is registered when a session starts running, so a brand-new session does not offer it in the menu until you have sent something; you can still type it in full.
+
 ## Options
 
 Set these when you install, or later with `/plugin configure tokensaver@claude-tokensaver`.

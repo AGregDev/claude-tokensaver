@@ -1,6 +1,6 @@
 {
   "name": "claude-tokensaver",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Claude Code mod that routes sub-agents to the cheapest capable model tier, escalates on failure, and shows live token savings.",
   "license": "MIT",
