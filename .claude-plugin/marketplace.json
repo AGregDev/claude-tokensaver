@@ -1,0 +1,12 @@
+{
+  "name": "claude-tokensaver",
+  "description": "The tokensaver mod for Claude Code: token-efficient sub-agent delegation and model routing.",
+  "owner": { "name": "AGregDev" },
+  "plugins": [
+    {
+      "name": "tokensaver",
+      "source": "./",
+      "description": "Token-efficient delegation: routes sub-agents to the cheapest capable model tier, escalates on failure, learns from outcomes locally, and shows live savings."
+    }
+  ]
+}
