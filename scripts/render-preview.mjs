@@ -1,4 +1,4 @@
-// Renders the README's pictures: docs/dashboard.svg and docs/statusline.svg.
+// Renders the README's pictures: docs/dashboard.svg, docs/statusline.svg and docs/strip.svg.
 //
 // They are not screenshots. They are the real renderers in src/ui, run over a
 // sample session that is itself produced by playing events through the real
@@ -20,6 +20,7 @@ import {
   onStepUsage,
   onTurnComplete,
 } from '../src/runtime/session.ts'
+import { bandSvg } from '../src/ui/band.ts'
 import { renderDashboard, sparklineLine } from '../src/ui/dashboard.ts'
 import { renderStatusLine } from '../src/ui/statusline.ts'
 import { toView } from '../src/ui/view.ts'
@@ -336,6 +337,11 @@ writeFileSync(
   }),
 )
 
-console.log('preview: docs/dashboard.svg, docs/statusline.svg')
+// The strip above the prompt, exactly as the desktop app is handed it: an animated picture
+// that follows light and dark by itself, so it needs no window drawn around it.
+writeFileSync(join(root, 'docs', 'strip.svg'), `${bandSvg(view, 720)}
+`)
+
+console.log('preview: docs/dashboard.svg, docs/statusline.svg, docs/strip.svg')
 console.log(lines.map(line => line.map(part => part.text).join('')).join('\n'))
 console.log(frames[0])
