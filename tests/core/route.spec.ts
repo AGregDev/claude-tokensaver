@@ -1,13 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  DEFAULT_THRESHOLDS,
-  HANDOFF_OVERHEAD_TOKENS,
-  decideDelegation,
-  estimateWorkTokens,
-  resolveSpawnModel,
-  routeTier,
-} from '../../src/core/route.ts'
+import { DEFAULT_THRESHOLDS, resolveSpawnModel, routeTier } from '../../src/core/route.ts'
 import type { RouteDecision } from '../../src/core/route.ts'
 import { scoreTask } from '../../src/core/score.ts'
 import type { TaskScore, TaskType } from '../../src/core/score.ts'
@@ -20,7 +13,7 @@ import {
   tierAt,
   tierOfModel,
 } from '../../src/core/tiers.ts'
-import { FABLE, HAIKU, OPUS, SEARCH_PROMPT, SONNET } from '../helpers.ts'
+import { FABLE, HAIKU, OPUS, SONNET } from '../helpers.ts'
 
 const scored = (taskType: TaskType, complexity: number, extra: Partial<TaskScore> = {}): TaskScore => ({
   taskType,
@@ -29,6 +22,7 @@ const scored = (taskType: TaskType, complexity: number, extra: Partial<TaskScore
   isRisky: false,
   risks: [],
   isUnsure: false,
+  namedFiles: 0,
   ...extra,
 })
 
@@ -188,38 +182,5 @@ describe('resolveSpawnModel', () => {
     })
 
     expect(routing).toMatchObject({ model: 'sonnet', tier: 'sonnet' })
-  })
-})
-
-describe('decideDelegation', () => {
-  it('delegates broad mechanical work', () => {
-    const decision = decideDelegation(scoreTask({ text: SEARCH_PROMPT }))
-
-    expect(decision.shouldDelegate).toBe(true)
-    expect(decision.estimatedSavings).toBeGreaterThan(0)
-  })
-
-  it('keeps a narrow search inline: the handoff would cost more than it saves', () => {
-    const score = scoreTask({ text: 'find parseConfig in src/config.ts' })
-    const decision = decideDelegation(score)
-
-    expect(score.taskType).toBe('search')
-    expect(decision.shouldDelegate).toBe(false)
-    expect(decision.reason).toContain('cost more')
-    expect(estimateWorkTokens(score) - HANDOFF_OVERHEAD_TOKENS).toBeLessThan(1500)
-  })
-
-  it('keeps reasoning and edits inline', () => {
-    expect(decideDelegation(scoreTask({ text: 'design the plugin architecture' })).shouldDelegate).toBe(false)
-    expect(decideDelegation(scoreTask({ text: 'add a null check to src/a.ts' })).shouldDelegate).toBe(false)
-  })
-
-  it('keeps risky work in the main loop however broad it is', () => {
-    const decision = decideDelegation(
-      scoreTask({ text: 'find every password across the whole repo and list all files' }),
-    )
-
-    expect(decision.shouldDelegate).toBe(false)
-    expect(decision.reason).toContain('risky')
   })
 })

@@ -37,6 +37,8 @@ export type TaskScore = {
   risks: readonly RiskKind[]
   /** True when the heuristics cannot place the task with confidence. */
   isUnsure: boolean
+  /** Files the task names, or the count it states. */
+  namedFiles: number
 }
 
 export type TaskInput = {
@@ -123,10 +125,14 @@ const classify = (text: string): TaskType => {
 const risksOf = (text: string): readonly RiskKind[] =>
   RISK_KINDS.filter(kind => countOf(text, RISK_PATTERNS[kind]) > 0)
 
-const filesFeature = (text: string, scope: number): number => {
+const namedFilesOf = (text: string): number => {
   const paths = new Set(matchesOf(text, PATH_PATTERN)).size
   const stated = Number(FILE_COUNT_PATTERN.exec(text)?.[1] ?? 0)
-  const count = Math.max(paths, stated)
+
+  return Math.max(paths, stated)
+}
+
+const filesFeature = (count: number, scope: number): number => {
 
   // A broad task that names no file touches an unknown number of them.
   if (count === 0 && scope >= 0.34) {
@@ -158,10 +164,11 @@ export const scoreTask = (input: TaskInput): TaskScore => {
   const words = wordCountOf(text)
   const scope = clamp01(countOf(text, SCOPE_PATTERN) / 3)
   const risks = risksOf(text)
+  const namedFiles = namedFilesOf(text)
   const riskHits = RISK_KINDS.reduce((sum, kind) => sum + countOf(text, RISK_PATTERNS[kind]), 0)
   const features: Features = {
     scope,
-    files: filesFeature(text, scope),
+    files: filesFeature(namedFiles, scope),
     ambiguity: ambiguityFeature(text, words),
     depth: depthFeature(text, words),
     risk: clamp01(riskHits / 2),
@@ -184,6 +191,7 @@ export const scoreTask = (input: TaskInput): TaskScore => {
     isRisky: risks.length > 0,
     risks,
     isUnsure: features.ambiguity >= 0.6 || taskType === 'general' || words < 3,
+    namedFiles,
   }
 }
 

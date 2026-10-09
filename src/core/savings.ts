@@ -7,7 +7,8 @@ import { TOP_RANK } from './tiers.ts'
  */
 export const COST_WEIGHTS: readonly [number, number, number] = [1, 3, 5]
 
-const weightAt = (rank: number): number => {
+/** The relative cost of a token at a model rank. */
+export const costWeightAt = (rank: number): number => {
   if (rank <= 0) {
     return COST_WEIGHTS[0]
   }
@@ -23,7 +24,7 @@ export const estimateTokens = (text: string): number => Math.ceil(text.length / 
  * tier. Negative when the work was routed up: escalation is counted as a cost.
  */
 export const routingSavings = (tokens: number, usedRank: number, baselineRank: number): number =>
-  Math.round(tokens * (1 - weightAt(usedRank) / weightAt(baselineRank)))
+  Math.round(tokens * (1 - costWeightAt(usedRank) / costWeightAt(baselineRank)))
 
 /**
  * What delegating kept out of the main context: the work the sub-agent read
