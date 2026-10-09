@@ -1,0 +1,18 @@
+node_modules/
+dist/
+coverage/
+
+# Written by Claude Code each time it loads the mod; regenerate with `npm run types:sync`.
+.claude-plugin/types/
+
+# Local data and exports: never commit outcome logs.
+tokensaver-export*.json
+*.log
+.env
+.env.*
+
+# Editor and OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
