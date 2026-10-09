@@ -55,7 +55,7 @@ Every adjustment after the first pick moves up, never down:
 An agent type can name its own model in its definition, and a spawn does not say whether it does. So tokensaver leaves the first spawn of each agent type in a session untouched and watches which model Claude Code resolves for it:
 
 - If it resolves to the parent's model, the type inherits, and tokensaver routes that type from then on.
-- If it resolves to anything else, the type brings its own model (the built-in `Explore` agent does), and tokensaver never reroutes it.
+- If it resolves to anything else, the type brings its own model, as a custom agent with `model:` in its definition does, and tokensaver never reroutes it.
 
 Forks, teammates and workflow agents are left alone, and so is any session whose model family tokensaver does not recognise.
 
