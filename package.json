@@ -1,6 +1,6 @@
 {
   "name": "claude-tokensaver",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "description": "Claude Code mod that routes sub-agents to the cheapest capable model tier, escalates on failure, and shows live token savings.",
   "license": "MIT",
@@ -19,7 +19,8 @@
     "build": "node scripts/build.mjs",
     "package": "node scripts/package.mjs",
     "preview": "node scripts/render-preview.mjs",
-    "check": "npm run typecheck && npm run lint && npm run test:coverage && npm run validate && npm run test:mod && npm run build"
+    "check": "npm run typecheck && npm run lint && npm run test:coverage && npm run validate && npm run test:mod && npm run build",
+    "bench": "node scripts/bench.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",

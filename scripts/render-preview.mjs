@@ -1,347 +1,143 @@
-// Renders the README's pictures: docs/dashboard.svg, docs/statusline.svg and docs/strip.svg.
+// Renders the README's pictures into docs/: Clawd's pane, its moods, the band
+// above the prompt, and the sub-agent strip.
 //
-// They are not screenshots. They are the real renderers in src/ui, run over a
-// sample session that is itself produced by playing events through the real
-// controller, and then painted as SVG instead of by Claude Code. The text and
-// its styling are exactly what the mod draws; the window around it is not.
+// They are not screenshots. They are the mod's real renderers in src/ui, run
+// over sample figures (and, for the strip, over a session played through the
+// real controller), written out exactly as the desktop app receives them. The
+// animation is CSS inside each picture, so it plays on GitHub too.
 //
 // Needs Node 22.18+ (it imports the TypeScript sources directly).
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import {
-  hydrate,
-  onAgentResult,
-  onMeasure,
-  onPrompt,
-  onSpawn,
-  onSpawned,
-  onStepUsage,
-  onTurnComplete,
-} from '../src/runtime/session.ts'
+import { hydrate, onSpawn, onSpawned } from '../src/runtime/session.ts'
 import { bandSvg } from '../src/ui/band.ts'
-import { renderDashboard, sparklineLine } from '../src/ui/dashboard.ts'
-import { renderStatusLine } from '../src/ui/statusline.ts'
+import { bandSvgOf, clawdBody, heroSvg, tilesSvg } from '../src/ui/clawd.ts'
 import { toView } from '../src/ui/view.ts'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const docs = join(root, 'docs')
 const OPUS = 'claude-opus-5-5'
+const WIDTH = 640
 
-// --- A sample session, played through the controller ------------------------
-
-const storedLog = Array.from({ length: 41 }, (_, index) => ({
-  seq: index + 1,
-  at: 1,
-  taskType: index % 3 === 0 ? 'bulk-read' : 'search',
-  tier: index % 5 === 0 ? 'sonnet' : 'haiku',
-  tokens: 3000,
-  retries: index === 17 ? 1 : 0,
-  wasEscalated: index === 17,
-  isSuccess: true,
-  signal: 'ok',
-}))
-
-let session = hydrate({
-  options: {},
-  storedLog,
-  storedThresholds: undefined,
-  storedSettings: undefined,
-  noColor: undefined,
-}).session
-let agents = 0
-
-const apply = step => {
-  session = step.session
-
-  return step.reply
-}
-
-const mainTurn = (turnId, tokens) => {
-  apply(
-    onStepUsage(session, {
-      turnId,
-      agentId: undefined,
-      usage: { model: OPUS, input: tokens, output: 900, cacheWrite: 0 },
-    }),
-  )
-  apply(
-    onTurnComplete(session, {
-      turnId,
-      agentId: undefined,
-      usage: undefined,
-      isFailed: false,
-      isAborted: false,
-      answer: 'done',
-      now: 1,
-    }),
-  )
-}
-
-/** One Agent call; `results` are the first attempt's answer and, if it fails, the retry's. */
-const agent = ({ toolUseId, prompt, description, tokens, results, parentAgentId, isLeftRunning }) => {
-  let explicitModel
-
-  for (const text of results) {
-    agents += 1
-
-    const agentId = `agent-${agents}`
-    const spawn = apply(
-      onSpawn(session, {
-        toolUseId,
-        prompt,
-        description,
-        subagentType: 'general-purpose',
-        explicitModel,
-        parentModel: OPUS,
-        parentAgentId,
-        isBackground: false,
-        isPinned: false,
-      }),
-    )
-    const model = spawn.model ?? explicitModel ?? OPUS
-
-    apply(onSpawned(session, { toolUseId, agentId, isDenied: false, resolvedModel: model }))
-    apply(
-      onStepUsage(session, {
-        turnId: `t-${agentId}`,
-        agentId,
-        usage: { model, input: tokens, output: 300, cacheWrite: 0 },
-      }),
-    )
-
-    if (isLeftRunning) {
-      return agentId
-    }
-
-    apply(
-      onTurnComplete(session, {
-        turnId: `t-${agentId}`,
-        agentId,
-        usage: undefined,
-        isFailed: false,
-        isAborted: false,
-        answer: text,
-        now: 1,
-      }),
-    )
-
-    const reply = apply(
-      onAgentResult(session, {
-        toolUseId,
-        isDenied: false,
-        isError: false,
-        text,
-        totalTokens: undefined,
-        now: 1,
-      }),
-    )
-
-    if (reply.retryWith === undefined) {
-      return agentId
-    }
-
-    explicitModel = reply.retryWith
-  }
-
-  return undefined
-}
-
-apply(onPrompt(session, { text: 'find all usages of parseConfig across the repo and list every file', isFromUser: true, now: 1 }))
-agent({
-  toolUseId: 'call-1',
-  prompt: 'find all usages of parseConfig across the repo and list every file',
-  description: 'find parseConfig usages',
-  tokens: 9400,
-  results: ['Found 14 usages in 6 files.'],
-})
-mainTurn('turn-1', 6200)
-
-apply(onPrompt(session, { text: 'rename getUser to fetchUser in every file across the repo', isFromUser: true, now: 1 }))
-agent({
-  toolUseId: 'call-2',
-  prompt: 'rename getUser to fetchUser in every file across the repo',
-  description: 'rename getUser everywhere',
-  tokens: 5200,
-  results: ['Renamed 9 files, but 2 tests failed.', 'Renamed 11 files. All tests pass.'],
-})
-mainTurn('turn-2', 7100)
-
-apply(onPrompt(session, { text: 'read through every file in docs/ and summarize the open questions', isFromUser: true, now: 1 }))
-agent({
-  toolUseId: 'call-3',
-  prompt: 'read through every file in docs/ and gather every open question',
-  description: 'survey docs for open questions',
-  tokens: 12800,
-  results: ['Read 23 files. 7 open questions.'],
-})
-mainTurn('turn-3', 5400)
-
-apply(onPrompt(session, { text: 'summarize the build logs across all packages and give me a recap of every warning', isFromUser: true, now: 1 }))
-
-const parent = agent({
-  toolUseId: 'call-4',
-  prompt: 'summarize the build logs across all packages and give me a recap of every warning',
-  description: 'summarize build logs',
-  tokens: 2100,
-  results: [''],
-  isLeftRunning: true,
+/** Sample figures from a long session: what the pane looks like after an afternoon's work. */
+const view = overrides => ({
+  mood: 'idle',
+  speech: '31.2k tokens eaten so far, ~412.0k re-sends avoided.',
+  mode: 'on',
+  hasMotion: true,
+  hasColor: true,
+  context: { tokens: 84_000, window: 200_000, percent: 42 },
+  ghost: 23_000,
+  stats: { eaten: 31_200, reReads: 412_000, compactFreed: 138_000, routed: 9100, keptOut: 4000, trims: 17, compactions: 1 },
+  feed: [],
+  activeAgents: 0,
+  frame: 0,
+  ...overrides,
 })
 
-agent({
-  toolUseId: 'call-5',
-  prompt: 'find all warnings in packages/api/build.log and list every one',
-  description: 'scan packages/api log',
-  tokens: 800,
-  results: [''],
-  parentAgentId: parent,
-  isLeftRunning: true,
-})
-apply(onStepUsage(session, { turnId: 'turn-4', agentId: undefined, usage: { model: OPUS, input: 4300, output: 400, cacheWrite: 0 } }))
-apply(onMeasure(session, { tokens: 48_200, window: 200_000 }))
-session = { ...session, shownSaved: session.saved, frame: 1 }
+/** Stacks pictures into one, each as a nested <svg> so its own styles and ids stay its own. */
+const stack = (title, parts, gap = 14) => {
+  let y = 0
+  const placed = parts.map(svg => {
+    const height = Number(/height="(\d+(?:\.\d+)?)"/.exec(svg)?.[1] ?? 0)
+    const nested = svg.replace('<svg ', `<svg y="${String(y)}" `)
 
-// --- Painting ---------------------------------------------------------------
+    y += height + gap
 
-const CELL = 8.6
-const LINE = 20
-const PAD = 18
-const FONT = "ui-monospace, 'Cascadia Mono', 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace"
-const INK = '#e6e6e6'
-const TONES = {
-  success: '#4eba65',
-  warning: '#ffc107',
-  error: '#ff6b80',
-  claude: '#d77757',
-  suggestion: '#b1b9f9',
-  inactive: '#999999',
-}
+    return nested
+  })
+  const height = y - gap
 
-const escapeXml = text =>
-  text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-
-/** SVG collapses runs of spaces; a no-break space keeps every cell of the grid. */
-const cells = text => escapeXml(text).replace(/ /g, ' ')
-
-/** One styled line as SVG text, every span pinned to its column so the grid holds in any font. */
-const paintLine = (line, y, extra = '') => {
-  let column = 0
-
-  return line
-    .map(part => {
-      const x = PAD + column * CELL
-      const width = part.text.length * CELL
-
-      column += part.text.length
-
-      if (part.text.trim() === '') {
-        return ''
-      }
-
-      const attributes = [
-        `x="${x.toFixed(1)}"`,
-        `y="${y}"`,
-        `textLength="${width.toFixed(1)}"`,
-        'lengthAdjust="spacingAndGlyphs"',
-        `fill="${part.tone === undefined ? INK : TONES[part.tone]}"`,
-        part.isBold === true ? 'font-weight="700"' : '',
-        part.isDim === true ? 'opacity="0.55"' : '',
-        extra,
-      ]
-        .filter(attribute => attribute !== '')
-        .join(' ')
-
-      return `<text ${attributes}>${cells(part.text)}</text>`
-    })
-    .join('')
-}
-
-const frameSvg = ({ width, height, title, body, caption }) =>
-  [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${escapeXml(title)}">`,
-    `<title>${escapeXml(title)}</title>`,
-    `<rect width="${width}" height="${height}" rx="10" fill="#1b1b1f"/>`,
-    `<rect width="${width}" height="30" rx="10" fill="#2a2a30"/><rect y="20" width="${width}" height="10" fill="#2a2a30"/>`,
-    '<circle cx="18" cy="15" r="5" fill="#ff5f57"/><circle cx="36" cy="15" r="5" fill="#febc2e"/><circle cx="54" cy="15" r="5" fill="#28c840"/>',
-    `<text x="${width / 2}" y="19" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" fill="#9a9aa2">${escapeXml(title)}</text>`,
-    `<g font-family="${FONT}" font-size="14" xml:space="preserve">${body}</g>`,
-    `<text x="${width - 12}" y="${height - 9}" text-anchor="end" font-family="system-ui, sans-serif" font-size="10" fill="#6c6c75">${escapeXml(caption)}</text>`,
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${String(WIDTH)}" height="${String(height)}" viewBox="0 0 ${String(WIDTH)} ${String(height)}" role="img" aria-label="${title}">`,
+    `<title>${title}</title>`,
+    ...placed,
     '</svg>',
     '',
   ].join('\n')
+}
 
-const CAPTION = 'Rendered by src/ui from sample data, not a screenshot'
-const COLUMNS = 64
-
-// The dashboard pane.
-const view = toView(session)
-const dashboard = renderDashboard(view, COLUMNS)
-const lines = [...dashboard.top, sparklineLine(view, COLUMNS), ...dashboard.bottom]
-const buttons = [
-  { text: '[ Turn off ]', isBold: true },
-  { text: '  ' },
-  { text: '[ Dry-run ]' },
+const MOODS = [
+  ['idle', 'idle'],
+  ['chomp', 'eating noise'],
+  ['happy', 'compacted'],
+  ['busy', 'helpers running'],
+  ['worried', 'context 74%'],
+  ['sleepy', 'cache cold'],
+  ['alert', 'escalated'],
 ]
-const rows = [...lines, [], buttons]
-const paneWidth = Math.ceil(PAD * 2 + COLUMNS * CELL)
-const paneHeight = 30 + PAD + rows.length * LINE + 22
 
-mkdirSync(join(root, 'docs'), { recursive: true })
+/** Every mood side by side, each Clawd animating in its own way. */
+const moodsSvg = () => {
+  const p = 5
+  const cell = WIDTH / MOODS.length
+  const height = 110
+  const sample = heroSvg(view({}), WIDTH)
+  const style = /<style>[\s\S]*?<\/style>/.exec(sample)?.[0] ?? ''
+
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${String(WIDTH)}" height="${String(height)}" viewBox="0 0 ${String(WIDTH)} ${String(height)}" role="img" aria-label="Clawd's moods">`,
+    "<title>Clawd's moods</title>",
+    style,
+    ...MOODS.map(([mood, label], index) => {
+      const x = index * cell + (cell - 14 * p) / 2
+
+      return [
+        `<g class="c ${mood}" transform="translate(${x.toFixed(1)} 26)">${clawdBody(mood, p)}</g>`,
+        `<text class="d" x="${(index * cell + cell / 2).toFixed(1)}" y="${String(height - 6)}" font-size="12" text-anchor="middle">${label}</text>`,
+      ].join('')
+    }),
+    '</svg>',
+    '',
+  ].join('\n')
+}
+
+/** Two helpers running on haiku, played through the real controller, for the sub-agent strip. */
+const stripView = () => {
+  let session = hydrate({ options: {}, storedLog: undefined, storedThresholds: undefined, storedSettings: undefined, noColor: undefined }).session
+
+  for (const [index, description] of ['find usages of parseConfig', 'read the migration guides'].entries()) {
+    const toolUseId = `call-${String(index)}`
+
+    // The first spawn of a type is watched, not routed: it shows the type inherits its model.
+    session = onSpawned(
+      onSpawn(session, { toolUseId: `probe-${String(index)}`, prompt: 'hello', description: '', subagentType: 'Explore', explicitModel: undefined, parentModel: OPUS, parentAgentId: undefined, isBackground: true, isPinned: false }).session,
+      { toolUseId: `probe-${String(index)}`, agentId: `probe-${String(index)}`, isDenied: false, resolvedModel: OPUS },
+    ).session
+    session = onSpawn(session, {
+      toolUseId,
+      prompt: `${description} across the repo and list every file`,
+      description,
+      subagentType: 'Explore',
+      explicitModel: undefined,
+      parentModel: OPUS,
+      parentAgentId: undefined,
+      isBackground: false,
+      isPinned: false,
+    }).session
+    session = onSpawned(session, { toolUseId, agentId: `agent-${String(index)}`, isDenied: false, resolvedModel: 'haiku' }).session
+  }
+
+  return toView({ ...session, agents: session.agents.filter(agent => !agent.key.startsWith('probe-')) })
+}
+
+mkdirSync(docs, { recursive: true })
+
+for (const old of ['dashboard.svg', 'statusline.svg']) {
+  rmSync(join(docs, old), { force: true })
+}
+
+writeFileSync(join(docs, 'clawd-pane.svg'), stack("Clawd's pane: the mascot, the context meter and the savings", [heroSvg(view({}), WIDTH), tilesSvg(view({}), WIDTH)]))
+writeFileSync(join(docs, 'clawd-moods.svg'), moodsSvg())
 writeFileSync(
-  join(root, 'docs', 'dashboard.svg'),
-  frameSvg({
-    width: paneWidth,
-    height: paneHeight,
-    title: 'tokensaver dashboard pane',
-    body: rows.map((line, index) => paintLine(line, 30 + PAD + 14 + index * LINE)).join('\n'),
-    caption: CAPTION,
-  }),
+  join(docs, 'clawd-band.svg'),
+  stack('The band above the prompt', [
+    bandSvgOf(view({ mood: 'chomp', speech: 'Ate 3.4k tokens of Bash noise: colour codes, repeated lines and look-alike lines' }), WIDTH),
+    bandSvgOf(view({ mood: 'sleepy', speech: "Zzz… cache went cold. Next message re-writes ~105k tokens; compact first and it's ~10.5k." }), WIDTH),
+  ], 6),
 )
+writeFileSync(join(docs, 'strip.svg'), `${bandSvg(stripView(), WIDTH)}\n`)
 
-// The CLI status line, animated: the four spinner frames, then the same line under reduced motion.
-const FRAME_SECONDS = 0.25
-const frames = [0, 1, 2, 3].map(frame => renderStatusLine({ ...view, frame }) ?? '')
-const longest = Math.max(...frames.map(text => text.length))
-const statusWidth = Math.ceil(PAD * 2 + Math.max(longest, 72) * CELL)
-const total = FRAME_SECONDS * frames.length
-const animated = frames
-  .map((text, index) => {
-    const from = (index * FRAME_SECONDS) / total
-    const to = ((index + 1) * FRAME_SECONDS) / total
-    const values = index === 0 ? '1;0;0' : '0;1;0;0'
-    const keyTimes = index === 0 ? `0;${to};1` : `0;${from};${to};1`
-    const animate = `<animate attributeName="opacity" calcMode="discrete" dur="${total}s" repeatCount="indefinite" values="${values}" keyTimes="${keyTimes}"/>`
-
-    // Only the spinner glyph differs between frames, so only it is animated.
-    return `<text x="${PAD}" y="${30 + PAD + 14 + LINE}" fill="${TONES.claude}" opacity="${index === 0 ? 1 : 0}">${escapeXml(text.slice(0, 1))}${animate}</text>`
-  })
-  .join('\n')
-const rest = paintLine([{ text: ' ' }, { text: frames[0].slice(1) }], 30 + PAD + 14 + LINE)
-const still = renderStatusLine({ ...view, hasReducedMotion: true }) ?? ''
-const statusBody = [
-  paintLine([{ text: '> ', isDim: true }, { text: 'summarize the build logs across all packages', isDim: true }], 30 + PAD + 14),
-  animated,
-  rest,
-  paintLine([{ text: 'with reduced motion:', isDim: true }], 30 + PAD + 14 + LINE * 3),
-  paintLine([{ text: still }], 30 + PAD + 14 + LINE * 4),
-].join('\n')
-
-writeFileSync(
-  join(root, 'docs', 'statusline.svg'),
-  frameSvg({
-    width: statusWidth,
-    height: 30 + PAD + LINE * 5 + 26,
-    title: 'tokensaver status line (CLI)',
-    body: statusBody,
-    caption: CAPTION,
-  }),
-)
-
-// The strip above the prompt, exactly as the desktop app is handed it: an animated picture
-// that follows light and dark by itself, so it needs no window drawn around it.
-writeFileSync(join(root, 'docs', 'strip.svg'), `${bandSvg(view, 720)}
-`)
-
-console.log('preview: docs/dashboard.svg, docs/statusline.svg, docs/strip.svg')
-console.log(lines.map(line => line.map(part => part.text).join('')).join('\n'))
-console.log(frames[0])
+console.log('preview: docs/clawd-pane.svg, docs/clawd-moods.svg, docs/clawd-band.svg, docs/strip.svg')

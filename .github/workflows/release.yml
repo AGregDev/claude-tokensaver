@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 env:
-  CLAUDE_CODE_VERSION: 2.1.292
+  CLAUDE_CODE_VERSION: 2.1.299
 
 jobs:
   release:

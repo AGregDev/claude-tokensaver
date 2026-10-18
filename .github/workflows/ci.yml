@@ -14,7 +14,7 @@ concurrency:
 
 env:
   # The Claude Code release the mod is typed and tested against.
-  CLAUDE_CODE_VERSION: 2.1.292
+  CLAUDE_CODE_VERSION: 2.1.299
 
 jobs:
   check:
@@ -50,6 +50,10 @@ jobs:
 
       - name: Tests inside Claude Code
         run: npm run test:mod
+
+      # The floors are enforced by the tests above; this prints the numbers in the log.
+      - name: Trimmer efficiency report
+        run: npm run bench
 
       - name: Build
         run: npm run build

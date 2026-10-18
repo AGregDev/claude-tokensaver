@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="260" viewBox="0 0 640 260" role="img" aria-label="Clawd's pane: the mascot, the context meter and the savings">
+<title>Clawd's pane: the mascot, the context meter and the savings</title>
+<svg y="0" xmlns="http://www.w3.org/2000/svg" width="640" height="176" viewBox="0 0 640 176"><style>
+svg{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.t{fill:#3b3530}
+.d{fill:#8a817a}
+.bubble{fill:#ffffff;stroke:#e6ddd6}
+.track{fill:#efe8e2}
+.tile{fill:#faf6f3;stroke:#eee5de}
+@media (prefers-color-scheme:dark){
+.t{fill:#ece6e1}.d{fill:#a59d96}.bubble{fill:#2b2724;stroke:#3d3733}.track{fill:#3a3430}.tile{fill:#262220;stroke:#352f2b}
+}
+.c *{transform-box:fill-box;transform-origin:center}
+
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes blink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.1)}}
+@keyframes look{0%,40%,100%{transform:translateX(0)}50%,90%{transform:translateX(5px)}}
+@keyframes walkA{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes walkB{0%,100%{transform:translateY(-4px)}50%{transform:translateY(0)}}
+@keyframes jump{0%,100%{transform:translateY(0)}30%{transform:translateY(-16px) scaleY(1.04)}55%{transform:translateY(0) scaleY(.92)}70%{transform:translateY(-4px)}}
+@keyframes chomp{0%,100%{transform:scaleY(.15)}50%{transform:scaleY(1)}}
+@keyframes crumb{0%{transform:translate(0,0) scale(1);opacity:0}15%{opacity:1}100%{transform:translate(-78px,6px) scale(.3);opacity:0}}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-2px)}40%{transform:translateX(2px)}60%{transform:translateX(-1px)}80%{transform:translateX(1px)}}
+@keyframes drip{0%{transform:translateY(0);opacity:0}20%{opacity:1}100%{transform:translateY(18px);opacity:0}}
+@keyframes zzz{0%{transform:translate(0,0) scale(.6);opacity:0}30%{opacity:1}100%{transform:translate(14px,-26px) scale(1.15);opacity:0}}
+@keyframes spark{0%,100%{transform:scale(0) rotate(0);opacity:0}40%{transform:scale(1) rotate(45deg);opacity:1}70%{opacity:.8}}
+@keyframes pop{0%{transform:scale(.6);opacity:0}60%{transform:scale(1.08);opacity:1}100%{transform:scale(1)}}
+@keyframes breathe{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.96)}}
+@keyframes flow{from{background-position:0 0}to{background-position:12px 0}}
+@keyframes dash{to{stroke-dashoffset:-12}}
+.idle .whole{animation:bob 2.8s ease-in-out infinite}
+.idle .eyes,.busy .eyes,.happy .eyes,.chomp .eyes{animation:blink 4.2s infinite}
+.busy .whole{animation:bob 1.1s ease-in-out infinite}
+.busy .pupils{animation:look 2.4s ease-in-out infinite}
+.busy .legA{animation:walkA .5s steps(2) infinite}
+.busy .legB{animation:walkB .5s steps(2) infinite}
+.happy .whole{animation:jump 1.2s ease-out infinite}
+.happy .spark{animation:spark 1.2s ease-out infinite}
+.chomp .whole{animation:bob .45s ease-in-out infinite}
+.chomp .mouth{animation:chomp .3s ease-in-out infinite}
+.chomp .crumb{animation:crumb 1.1s linear infinite}
+.worried .whole{animation:shake .9s ease-in-out infinite}
+.worried .drop{animation:drip 1.6s ease-in infinite}
+.sleepy .whole{animation:breathe 3.6s ease-in-out infinite}
+.sleepy .z{animation:zzz 2.7s ease-out infinite}
+.alert .whole{animation:shake .4s ease-in-out infinite}
+.alert .bang{animation:pop .5s ease-out both}
+.pop{animation:pop .45s ease-out both}
+.flowing{animation:dash .8s linear infinite}
+</style><defs><linearGradient id="fill" x1="0" x2="1"><stop offset="0" stop-color="#D97757"/><stop offset="1" stop-color="#D97757"/></linearGradient><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="3" height="6" fill="#3FA55B" opacity=".55"/></pattern></defs><g class="c idle" transform="translate(18 30)"><ellipse cx="49" cy="72.8" rx="38.5" ry="3.8500000000000005" fill="#000" opacity=".12"/><g class="whole"><g class="legA"><rect x="21" y="56" width="7" height="14" fill="#B85C3E"/><rect x="56" y="56" width="7" height="14" fill="#B85C3E"/></g><g class="legB"><rect x="35" y="56" width="7" height="14" fill="#B85C3E"/><rect x="70" y="56" width="7" height="14" fill="#B85C3E"/></g><rect x="14" y="0" width="70" height="56" fill="#D97757"/><rect x="0" y="28" width="14" height="14" fill="#D97757"/><rect x="84" y="28" width="14" height="14" fill="#D97757"/><rect x="14" y="49" width="70" height="7" fill="#B85C3E"/><g class="eyes"><g class="pupils"><rect x="28" y="14" width="7" height="14" fill="#1F1A17"/><rect x="63" y="14" width="7" height="14" fill="#1F1A17"/></g></g></g></g><g class="pop"><rect class="bubble" x="142" y="35" width="488" height="46" rx="14" stroke-width="1.5"/><path class="bubble" d="M142 50 L130 60 L142 66" stroke-width="1.5"/><rect class="bubble" x="141" y="51" width="4" height="14" stroke="none"/><text class="t" x="156" y="60" font-size="13">31.2k tokens eaten so far, ~412.0k re-sends avoided.</text></g><text class="t" x="18" y="124" font-size="12" font-weight="600">Context 42%  ·  84.0k of 200.0k</text><text class="d" x="622" y="124" font-size="11" text-anchor="end">hatched: 23.0k Clawd kept out</text><rect class="track" x="18" y="132" width="604" height="12" rx="6"/><rect x="18" y="132" width="253.7" height="12" rx="6" fill="url(#fill)"/><rect x="271.7" y="132" width="69.5" height="12" rx="3" fill="url(#hatch)"/><rect x="320.0" y="130" width="1" height="16" fill="#8b8b8b" opacity=".35"/><rect x="440.8" y="130" width="1" height="16" fill="#8b8b8b" opacity=".35"/><rect x="531.4" y="130" width="1" height="16" fill="#8b8b8b" opacity=".35"/><text class="d" x="18" y="160" font-size="11">Marks at 50 · 70 · 85%. Clawd speaks up as you cross them.</text></svg>
+<svg y="190" xmlns="http://www.w3.org/2000/svg" width="640" height="70" viewBox="0 0 640 70"><style>
+svg{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.t{fill:#3b3530}
+.d{fill:#8a817a}
+.bubble{fill:#ffffff;stroke:#e6ddd6}
+.track{fill:#efe8e2}
+.tile{fill:#faf6f3;stroke:#eee5de}
+@media (prefers-color-scheme:dark){
+.t{fill:#ece6e1}.d{fill:#a59d96}.bubble{fill:#2b2724;stroke:#3d3733}.track{fill:#3a3430}.tile{fill:#262220;stroke:#352f2b}
+}
+.c *{transform-box:fill-box;transform-origin:center}
+
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes blink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.1)}}
+@keyframes look{0%,40%,100%{transform:translateX(0)}50%,90%{transform:translateX(5px)}}
+@keyframes walkA{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes walkB{0%,100%{transform:translateY(-4px)}50%{transform:translateY(0)}}
+@keyframes jump{0%,100%{transform:translateY(0)}30%{transform:translateY(-16px) scaleY(1.04)}55%{transform:translateY(0) scaleY(.92)}70%{transform:translateY(-4px)}}
+@keyframes chomp{0%,100%{transform:scaleY(.15)}50%{transform:scaleY(1)}}
+@keyframes crumb{0%{transform:translate(0,0) scale(1);opacity:0}15%{opacity:1}100%{transform:translate(-78px,6px) scale(.3);opacity:0}}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-2px)}40%{transform:translateX(2px)}60%{transform:translateX(-1px)}80%{transform:translateX(1px)}}
+@keyframes drip{0%{transform:translateY(0);opacity:0}20%{opacity:1}100%{transform:translateY(18px);opacity:0}}
+@keyframes zzz{0%{transform:translate(0,0) scale(.6);opacity:0}30%{opacity:1}100%{transform:translate(14px,-26px) scale(1.15);opacity:0}}
+@keyframes spark{0%,100%{transform:scale(0) rotate(0);opacity:0}40%{transform:scale(1) rotate(45deg);opacity:1}70%{opacity:.8}}
+@keyframes pop{0%{transform:scale(.6);opacity:0}60%{transform:scale(1.08);opacity:1}100%{transform:scale(1)}}
+@keyframes breathe{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.96)}}
+@keyframes flow{from{background-position:0 0}to{background-position:12px 0}}
+@keyframes dash{to{stroke-dashoffset:-12}}
+.idle .whole{animation:bob 2.8s ease-in-out infinite}
+.idle .eyes,.busy .eyes,.happy .eyes,.chomp .eyes{animation:blink 4.2s infinite}
+.busy .whole{animation:bob 1.1s ease-in-out infinite}
+.busy .pupils{animation:look 2.4s ease-in-out infinite}
+.busy .legA{animation:walkA .5s steps(2) infinite}
+.busy .legB{animation:walkB .5s steps(2) infinite}
+.happy .whole{animation:jump 1.2s ease-out infinite}
+.happy .spark{animation:spark 1.2s ease-out infinite}
+.chomp .whole{animation:bob .45s ease-in-out infinite}
+.chomp .mouth{animation:chomp .3s ease-in-out infinite}
+.chomp .crumb{animation:crumb 1.1s linear infinite}
+.worried .whole{animation:shake .9s ease-in-out infinite}
+.worried .drop{animation:drip 1.6s ease-in infinite}
+.sleepy .whole{animation:breathe 3.6s ease-in-out infinite}
+.sleepy .z{animation:zzz 2.7s ease-out infinite}
+.alert .whole{animation:shake .4s ease-in-out infinite}
+.alert .bang{animation:pop .5s ease-out both}
+.pop{animation:pop .45s ease-out both}
+.flowing{animation:dash .8s linear infinite}
+</style><g class="pop" style="animation-delay:0s"><title>17 outputs trimmed</title><rect class="tile" x="0.0" y="0" width="152.5" height="70" rx="12"/><rect x="12.0" y="14" width="4" height="42" rx="2" fill="#3FA55B"/><text class="t" x="26.0" y="36" font-size="22" font-weight="700">31.2k</text><text class="d" x="26.0" y="55" font-size="11.5">noise eaten</text></g><g class="pop" style="animation-delay:0.06s"><title>trimmed tokens × later requests</title><rect class="tile" x="162.5" y="0" width="152.5" height="70" rx="12"/><rect x="174.5" y="14" width="4" height="42" rx="2" fill="#7B83EB"/><text class="t" x="188.5" y="36" font-size="22" font-weight="700">412.0k</text><text class="d" x="188.5" y="55" font-size="11.5">re-sends avoided</text></g><g class="pop" style="animation-delay:0.12s"><title>1 compaction</title><rect class="tile" x="325.0" y="0" width="152.5" height="70" rx="12"/><rect x="337.0" y="14" width="4" height="42" rx="2" fill="#D97757"/><text class="t" x="351.0" y="36" font-size="22" font-weight="700">138.0k</text><text class="d" x="351.0" y="55" font-size="11.5">freed by compacting</text></g><g class="pop" style="animation-delay:0.18s"><title>cheaper models for helpers</title><rect class="tile" x="487.5" y="0" width="152.5" height="70" rx="12"/><rect x="499.5" y="14" width="4" height="42" rx="2" fill="#D99A00"/><text class="t" x="513.5" y="36" font-size="22" font-weight="700">13.1k</text><text class="d" x="513.5" y="55" font-size="11.5">routing &amp; delegation</text></g></svg>
+</svg>
