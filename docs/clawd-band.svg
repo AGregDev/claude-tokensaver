@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="98" viewBox="0 0 640 98" role="img" aria-label="The band above the prompt">
+<title>The band above the prompt</title>
+<svg y="0" xmlns="http://www.w3.org/2000/svg" width="640" height="46" viewBox="0 0 640 46"><style>
+svg{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.t{fill:#3b3530}
+.d{fill:#8a817a}
+.bubble{fill:#ffffff;stroke:#e6ddd6}
+.track{fill:#efe8e2}
+.tile{fill:#faf6f3;stroke:#eee5de}
+@media (prefers-color-scheme:dark){
+.t{fill:#ece6e1}.d{fill:#a59d96}.bubble{fill:#2b2724;stroke:#3d3733}.track{fill:#3a3430}.tile{fill:#262220;stroke:#352f2b}
+}
+.c *{transform-box:fill-box;transform-origin:center}
+
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes blink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.1)}}
+@keyframes look{0%,40%,100%{transform:translateX(0)}50%,90%{transform:translateX(5px)}}
+@keyframes walkA{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes walkB{0%,100%{transform:translateY(-4px)}50%{transform:translateY(0)}}
+@keyframes jump{0%,100%{transform:translateY(0)}30%{transform:translateY(-16px) scaleY(1.04)}55%{transform:translateY(0) scaleY(.92)}70%{transform:translateY(-4px)}}
+@keyframes chomp{0%,100%{transform:scaleY(.15)}50%{transform:scaleY(1)}}
+@keyframes crumb{0%{transform:translate(0,0) scale(1);opacity:0}15%{opacity:1}100%{transform:translate(-78px,6px) scale(.3);opacity:0}}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-2px)}40%{transform:translateX(2px)}60%{transform:translateX(-1px)}80%{transform:translateX(1px)}}
+@keyframes drip{0%{transform:translateY(0);opacity:0}20%{opacity:1}100%{transform:translateY(18px);opacity:0}}
+@keyframes zzz{0%{transform:translate(0,0) scale(.6);opacity:0}30%{opacity:1}100%{transform:translate(14px,-26px) scale(1.15);opacity:0}}
+@keyframes spark{0%,100%{transform:scale(0) rotate(0);opacity:0}40%{transform:scale(1) rotate(45deg);opacity:1}70%{opacity:.8}}
+@keyframes pop{0%{transform:scale(.6);opacity:0}60%{transform:scale(1.08);opacity:1}100%{transform:scale(1)}}
+@keyframes breathe{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.96)}}
+@keyframes flow{from{background-position:0 0}to{background-position:12px 0}}
+@keyframes dash{to{stroke-dashoffset:-12}}
+.idle .whole{animation:bob 2.8s ease-in-out infinite}
+.idle .eyes,.busy .eyes,.happy .eyes,.chomp .eyes{animation:blink 4.2s infinite}
+.busy .whole{animation:bob 1.1s ease-in-out infinite}
+.busy .pupils{animation:look 2.4s ease-in-out infinite}
+.busy .legA{animation:walkA .5s steps(2) infinite}
+.busy .legB{animation:walkB .5s steps(2) infinite}
+.happy .whole{animation:jump 1.2s ease-out infinite}
+.happy .spark{animation:spark 1.2s ease-out infinite}
+.chomp .whole{animation:bob .45s ease-in-out infinite}
+.chomp .mouth{animation:chomp .3s ease-in-out infinite}
+.chomp .crumb{animation:crumb 1.1s linear infinite}
+.worried .whole{animation:shake .9s ease-in-out infinite}
+.worried .drop{animation:drip 1.6s ease-in infinite}
+.sleepy .whole{animation:breathe 3.6s ease-in-out infinite}
+.sleepy .z{animation:zzz 2.7s ease-out infinite}
+.alert .whole{animation:shake .4s ease-in-out infinite}
+.alert .bang{animation:pop .5s ease-out both}
+.pop{animation:pop .45s ease-out both}
+.flowing{animation:dash .8s linear infinite}
+</style><g class="c chomp" transform="translate(12 6)"><ellipse cx="23.8" cy="35.36" rx="18.7" ry="1.87" fill="#000" opacity=".12"/><g class="whole"><g class="legA"><rect x="10.2" y="27.2" width="3.4" height="6.8" fill="#B85C3E"/><rect x="27.2" y="27.2" width="3.4" height="6.8" fill="#B85C3E"/></g><g class="legB"><rect x="17" y="27.2" width="3.4" height="6.8" fill="#B85C3E"/><rect x="34" y="27.2" width="3.4" height="6.8" fill="#B85C3E"/></g><rect x="6.8" y="0" width="34" height="27.2" fill="#D97757"/><rect x="0" y="13.6" width="6.8" height="6.8" fill="#D97757"/><rect x="40.8" y="13.6" width="6.8" height="6.8" fill="#D97757"/><rect x="6.8" y="23.8" width="34" height="3.4" fill="#B85C3E"/><g class="eyes"><g class="pupils"><rect x="13.6" y="6.8" width="3.4" height="6.8" fill="#1F1A17"/><rect x="30.599999999999998" y="6.8" width="3.4" height="6.8" fill="#1F1A17"/></g></g><g class="mouth"><rect x="18.7" y="17" width="10.2" height="4.08" fill="#1F1A17"/></g><g class="crumb" style="animation-delay:0s"><rect x="57.8" y="14.62" width="3.06" height="3.06" fill="#7B83EB"/></g><g class="crumb" style="animation-delay:0.27s"><rect x="61.199999999999996" y="16.32" width="3.06" height="3.06" fill="#3FA55B"/></g><g class="crumb" style="animation-delay:0.54s"><rect x="57.8" y="18.02" width="3.06" height="3.06" fill="#7B83EB"/></g><g class="crumb" style="animation-delay:0.81s"><rect x="61.199999999999996" y="14.62" width="3.06" height="3.06" fill="#3FA55B"/></g></g></g><text class="t pop" x="77.6" y="27.5" font-size="13">Ate 3.4k tokens of Bash noise: colour codes, repeated lines and …</text><rect class="track" x="546" y="14" width="86" height="18" rx="9"/><rect x="546" y="14" width="36.1" height="18" rx="9" fill="#D97757" opacity=".85"/><text class="t" x="589" y="27" font-size="11" font-weight="700" text-anchor="middle">ctx 42%</text></svg>
+<svg y="52" xmlns="http://www.w3.org/2000/svg" width="640" height="46" viewBox="0 0 640 46"><style>
+svg{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.t{fill:#3b3530}
+.d{fill:#8a817a}
+.bubble{fill:#ffffff;stroke:#e6ddd6}
+.track{fill:#efe8e2}
+.tile{fill:#faf6f3;stroke:#eee5de}
+@media (prefers-color-scheme:dark){
+.t{fill:#ece6e1}.d{fill:#a59d96}.bubble{fill:#2b2724;stroke:#3d3733}.track{fill:#3a3430}.tile{fill:#262220;stroke:#352f2b}
+}
+.c *{transform-box:fill-box;transform-origin:center}
+
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes blink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.1)}}
+@keyframes look{0%,40%,100%{transform:translateX(0)}50%,90%{transform:translateX(5px)}}
+@keyframes walkA{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes walkB{0%,100%{transform:translateY(-4px)}50%{transform:translateY(0)}}
+@keyframes jump{0%,100%{transform:translateY(0)}30%{transform:translateY(-16px) scaleY(1.04)}55%{transform:translateY(0) scaleY(.92)}70%{transform:translateY(-4px)}}
+@keyframes chomp{0%,100%{transform:scaleY(.15)}50%{transform:scaleY(1)}}
+@keyframes crumb{0%{transform:translate(0,0) scale(1);opacity:0}15%{opacity:1}100%{transform:translate(-78px,6px) scale(.3);opacity:0}}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-2px)}40%{transform:translateX(2px)}60%{transform:translateX(-1px)}80%{transform:translateX(1px)}}
+@keyframes drip{0%{transform:translateY(0);opacity:0}20%{opacity:1}100%{transform:translateY(18px);opacity:0}}
+@keyframes zzz{0%{transform:translate(0,0) scale(.6);opacity:0}30%{opacity:1}100%{transform:translate(14px,-26px) scale(1.15);opacity:0}}
+@keyframes spark{0%,100%{transform:scale(0) rotate(0);opacity:0}40%{transform:scale(1) rotate(45deg);opacity:1}70%{opacity:.8}}
+@keyframes pop{0%{transform:scale(.6);opacity:0}60%{transform:scale(1.08);opacity:1}100%{transform:scale(1)}}
+@keyframes breathe{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.96)}}
+@keyframes flow{from{background-position:0 0}to{background-position:12px 0}}
+@keyframes dash{to{stroke-dashoffset:-12}}
+.idle .whole{animation:bob 2.8s ease-in-out infinite}
+.idle .eyes,.busy .eyes,.happy .eyes,.chomp .eyes{animation:blink 4.2s infinite}
+.busy .whole{animation:bob 1.1s ease-in-out infinite}
+.busy .pupils{animation:look 2.4s ease-in-out infinite}
+.busy .legA{animation:walkA .5s steps(2) infinite}
+.busy .legB{animation:walkB .5s steps(2) infinite}
+.happy .whole{animation:jump 1.2s ease-out infinite}
+.happy .spark{animation:spark 1.2s ease-out infinite}
+.chomp .whole{animation:bob .45s ease-in-out infinite}
+.chomp .mouth{animation:chomp .3s ease-in-out infinite}
+.chomp .crumb{animation:crumb 1.1s linear infinite}
+.worried .whole{animation:shake .9s ease-in-out infinite}
+.worried .drop{animation:drip 1.6s ease-in infinite}
+.sleepy .whole{animation:breathe 3.6s ease-in-out infinite}
+.sleepy .z{animation:zzz 2.7s ease-out infinite}
+.alert .whole{animation:shake .4s ease-in-out infinite}
+.alert .bang{animation:pop .5s ease-out both}
+.pop{animation:pop .45s ease-out both}
+.flowing{animation:dash .8s linear infinite}
+</style><g class="c sleepy" transform="translate(12 6)"><ellipse cx="23.8" cy="35.36" rx="18.7" ry="1.87" fill="#000" opacity=".12"/><g class="whole"><g class="legA"><rect x="10.2" y="27.2" width="3.4" height="6.8" fill="#B85C3E"/><rect x="27.2" y="27.2" width="3.4" height="6.8" fill="#B85C3E"/></g><g class="legB"><rect x="17" y="27.2" width="3.4" height="6.8" fill="#B85C3E"/><rect x="34" y="27.2" width="3.4" height="6.8" fill="#B85C3E"/></g><rect x="6.8" y="0" width="34" height="27.2" fill="#D97757"/><rect x="0" y="13.6" width="6.8" height="6.8" fill="#D97757"/><rect x="40.8" y="13.6" width="6.8" height="6.8" fill="#D97757"/><rect x="6.8" y="23.8" width="34" height="3.4" fill="#B85C3E"/><g class="eyes"><rect x="12.24" y="10.88" width="5.44" height="1.53" fill="#1F1A17"/><rect x="29.92" y="10.88" width="5.44" height="1.53" fill="#1F1A17"/></g><text class="t z" x="42.5" y="1.7" font-size="4.76" font-weight="700" style="animation-delay:0s">z</text><text class="t z" x="42.5" y="1.7" font-size="6.76" font-weight="700" style="animation-delay:0.9s">z</text><text class="t z" x="42.5" y="1.7" font-size="8.76" font-weight="700" style="animation-delay:1.8s">Z</text></g></g><text class="t pop" x="77.6" y="27.5" font-size="13">Zzz… cache went cold. Next message re-writes ~105k tokens; compa…</text><rect class="track" x="546" y="14" width="86" height="18" rx="9"/><rect x="546" y="14" width="36.1" height="18" rx="9" fill="#D97757" opacity=".85"/><text class="t" x="589" y="27" font-size="11" font-weight="700" text-anchor="middle">ctx 42%</text></svg>
+</svg>

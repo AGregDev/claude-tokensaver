@@ -30,9 +30,12 @@ const SHIPPED = [
 const ALLOWED_HOOKS = [
   'agent.spawn',
   'command.run{command=tokensaver}',
-  'command.run{command=tokensaver:status|tokensaver:dashboard|tokensaver:doctor|tokensaver:on|tokensaver:off|tokensaver:dry-run|tokensaver:help}',
+  'command.run{command=tokensaver:status|tokensaver:dashboard|tokensaver:doctor|tokensaver:on|tokensaver:off|tokensaver:dry-run|tokensaver:help|tokensaver:compact|tokensaver:trim}',
   'prompt.submit',
+  'session.append{door=response}',
+  'session.append{door=tool-result}',
   'session.attach',
+  'session.compact',
   'session.measure',
   'session.start',
   'tool.call{tool=Agent}',
@@ -47,15 +50,18 @@ const ALLOWED_HOOKS = [
 
 /**
  * Every call the mod may make: display, its own local store, one local file
- * write, folder listings (names only) and one timer. No `$.agent.spawn`: the
+ * write, folder listings (names only), timers, and a compaction when
+ * the person asks for one (or opted in to auto-compact). No `$.agent.spawn`: the
  * mod never starts a sub-agent itself.
  */
 const ALLOWED_CALLS = [
+  '$.clock.after',
   '$.clock.every',
   '$.command.register',
   '$.env.get',
   '$.fs.list',
   '$.fs.write',
+  '$.session.compact',
   '$.session.model',
   '$.session.surfaces',
   '$.state.get',
@@ -91,7 +97,7 @@ const listed = (notes, label) => {
   // Split on commas outside braces: a matcher such as {component=Pane, requestId=...} has its own.
   return text === 'nothing'
     ? []
-    : text.split(/,\s*(?![^{]*\})/).map(item => item.replace(/ \(via [^)]+\)$/, '').trim())
+    : text.split(/,\s*(?![^{]*\})(?![^(]*\))/).map(item => item.replace(/ \(via [^)]+\)$/, '').trim())
 }
 
 const sameSet = (actual, allowed, what) => {

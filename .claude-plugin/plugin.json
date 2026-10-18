@@ -1,12 +1,23 @@
 {
   "name": "tokensaver",
-  "version": "0.2.1",
-  "description": "Token-efficient delegation: routes sub-agents to the cheapest capable model tier, escalates on failure, learns from outcomes locally, and shows live savings.",
-  "author": { "name": "AGregDev", "url": "https://github.com/AGregDev" },
+  "version": "0.3.0",
+  "description": "Clawd, a token-saving assistant: trims noisy tool output and pasted logs before they fill your context, tells you when to compact (and does it in one click), warns when the prompt cache goes cold, and routes sub-agents to cheaper models.",
+  "author": {
+    "name": "AGregDev",
+    "url": "https://github.com/AGregDev"
+  },
   "homepage": "https://github.com/AGregDev/claude-tokensaver",
   "repository": "https://github.com/AGregDev/claude-tokensaver",
   "license": "MIT",
-  "keywords": ["mods", "token-efficiency", "sub-agents", "model-routing", "dashboard"],
+  "keywords": [
+    "mods",
+    "token-efficiency",
+    "context",
+    "compaction",
+    "mascot",
+    "sub-agents",
+    "model-routing"
+  ],
   "types": "./types/index.d.ts",
   "userConfig": {
     "enabled": {
@@ -24,7 +35,7 @@
     "contextHint": {
       "type": "boolean",
       "title": "Delegation hint",
-      "description": "Add one short line to a prompt when delegating its bulk work would save tokens.",
+      "description": "Add one short line to a prompt when delegating its bulk reading to a sub-agent would save tokens. Claude decides; the mod never starts one itself.",
       "default": true
     },
     "statusLine": {
@@ -38,6 +49,46 @@
       "title": "Reduced motion",
       "description": "Turn off the spinner and the counting animation.",
       "default": false
+    },
+    "trimOutput": {
+      "type": "boolean",
+      "title": "Trim tool output",
+      "description": "Shrink noisy shell output (colour codes, progress bars, repeated lines, giant logs) before it is stored in the conversation.",
+      "default": true
+    },
+    "trimLevel": {
+      "type": "string",
+      "title": "Trim level",
+      "description": "lossless: only remove what carries no information. full: also fold look-alike lines and keep the head, tail and error lines of huge outputs.",
+      "options": [
+        "full",
+        "lossless"
+      ],
+      "default": "full"
+    },
+    "maxOutputLines": {
+      "type": "number",
+      "title": "Max output lines",
+      "description": "Under the full level, outputs longer than this keep their head and tail (plus every error/warning line).",
+      "default": 300
+    },
+    "trimPastes": {
+      "type": "boolean",
+      "title": "Tidy pasted logs",
+      "description": "Losslessly clean logs pasted into prompts (colour codes, progress bars, repeated lines). Prose is never touched.",
+      "default": true
+    },
+    "autoCompactAt": {
+      "type": "number",
+      "title": "Auto-compact at %",
+      "description": "Compact between turns once the context passes this fill percentage. 0 means never: Clawd only suggests it.",
+      "default": 0
+    },
+    "cacheTtlMinutes": {
+      "type": "number",
+      "title": "Prompt cache lifetime (minutes)",
+      "description": "How long the prompt cache lives on your plan. Idle longer than this and Clawd warns that the next message re-writes the whole context. 0 turns the warning off.",
+      "default": 5
     }
   }
 }

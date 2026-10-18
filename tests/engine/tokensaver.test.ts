@@ -362,59 +362,55 @@ test('exports the log to a local file', async ($, on) => {
   expect([...seen.files.values()][0]).toMatch(/"format": "tokensaver-export"/)
 })
 
-test('the dashboard draws on the terminal and the desktop, and its buttons work', async ($, on) => {
+test('Clawd\'s pane draws on the terminal and the desktop, and its buttons work', async ($, on) => {
   const seen = world(on)
 
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' })
-  await $.agent.spawn({ ...SPAWN, tool_use_id: 'call-1', prompt: SEARCH, description: 'search usages' })
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
 
-    expect(await ui.find({ type: 'Text', text: 'tokensaver ' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /search usages/ })).toBeDefined()
     expect((await ui.find({ key: 'power' }))?.props['label']).toBe('Turn off')
-    // Colour is on by default.
-    expect((await ui.find({ type: 'Text', text: '● on' }))?.props['color']).toBe('success')
+    expect((await ui.find({ key: 'compact' }))?.props['label']).toBe('Compact now')
+    expect((await ui.find({ key: 'trim' }))?.props['label']).toBe('Trimming: on')
 
-    await ui.press({ key: 'dry-run' })
-    expect((await ui.find({ key: 'dry-run' }))?.props['label']).toBe('Leave dry-run')
-    expect(await ui.find({ type: 'Text', text: '◌ dry-run' })).toBeDefined()
-    await ui.press({ key: 'dry-run' })
+    await ui.press({ key: 'trim' })
+    expect((await ui.find({ key: 'trim' }))?.props['label']).toBe('Trimming: off')
+    await ui.press({ key: 'trim' })
+    expect((await ui.find({ key: 'trim' }))?.props['label']).toBe('Trimming: on')
     await ui.unmount()
   }
 
-  expect(seen.saved.get('settings')).toEqual({ isDryRun: false })
+  expect(seen.saved.get('assistant')).toEqual({ isTrimming: true })
 })
 
-test('the desktop draws the savings trend as a vector once there is a history', async ($, on) => {
+test('the desktop draws Clawd as an animated picture, the terminal as block glyphs', async ($, on) => {
   world(on)
-
-  for (const turnId of ['t1', 't2']) {
-    await $.turn.complete({ turnId, answer: 'done', durationMs: 5, isAborted: false, reason: 'answer' })
-  }
 
   const desktop = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const terminal = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const hero = await desktop.find({ type: 'Svg' })
 
-  expect((await desktop.find({ type: 'Svg' }))?.props['alt']).toMatch(/last 2 turns/)
+  expect(hero?.props['alt']).toMatch(/^Clawd: /)
+  expect(String(hero?.props['source'])).toMatch(/@keyframes/)
+  expect(String(hero?.props['source'])).toMatch(/class="c idle"/)
+  // A picture, not a frame: the frame form draws a white box in the desktop app.
+  expect(hero?.props['isInteractive']).toBeUndefined()
   expect(await terminal.find({ type: 'Svg' })).toBeUndefined()
-  expect(await terminal.find({ type: 'Text', text: /^[▁-█]+$/u })).toBeDefined()
+  expect(await terminal.find({ type: 'Text', text: ' ▐▛███▜▌ ' })).toBeDefined()
 })
 
-test('NO_COLOR removes every colour from the dashboard', async ($, on) => {
+test('NO_COLOR removes every colour from the pane', async ($, on) => {
   world(on, { NO_COLOR: '1' })
 
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' })
-  await $.agent.spawn({ ...SPAWN, tool_use_id: 'call-1', prompt: SEARCH })
 
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  const mode = await ui.find({ type: 'Text', text: '● on' })
+  const art = await ui.find({ type: 'Text', text: ' ▐▛███▜▌ ' })
 
-  expect(mode).toBeDefined()
-  expect(mode?.props['color']).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: /haiku/ })).toBeDefined()
-  expect((await ui.find({ type: 'Text', text: /haiku/ }))?.props['color']).toBeUndefined()
+  expect(art).toBeDefined()
+  expect(art?.props['color']).toBeUndefined()
+  expect((await ui.find({ type: 'Text', text: '0' }))?.props['color']).toBeUndefined()
 })
 
 test('reduced motion stops the animation clock', { options: { reducedMotion: true } }, async ($, on) => {
@@ -424,6 +420,10 @@ test('reduced motion stops the animation clock', { options: { reducedMotion: tru
 
   // A running agent draws a fixed glyph, not a spinner frame.
   expect(seen.statuses.at(-1)).toMatch(/^◆ tokensaver/u)
+
+  const desktop = await $.ui.mount({ ...PANE, surface: 'desktop' })
+
+  expect(String((await desktop.find({ type: 'Svg' }))?.props['source'])).not.toMatch(/@keyframes/)
 })
 
 test('keeps working when the store and the environment are unavailable', async ($, on) => {
@@ -500,7 +500,7 @@ test('meters each model request without touching the response', async ($, on) =>
   expect(chunks).toEqual(['text'])
   expect(step.value.answer).toBe('ok')
   // New work only: input + output + cache writes. Cache reads are not counted.
-  expect(seen.statuses.at(-1)).toMatch(/tokensaver 2\.0k tok .* O 2\.0k/)
+  expect(seen.statuses.at(-1)).toMatch(/^● tokensaver 2\.0k tok · Clawd ate 0/u)
 })
 
 test('animates the spinner only while a sub-agent is running', async ($, on) => {
@@ -563,7 +563,7 @@ test('draws nothing above the prompt while nothing is delegated', async ($, on) 
   }
 })
 
-test('shows who is working above the prompt: text in the terminal, an animated picture on the desktop', async ($, on) => {
+test('shows Clawd and who is working above the prompt: text in the terminal, pictures on the desktop', async ($, on) => {
   const seen = world(on)
 
   await learn($, seen)
@@ -571,35 +571,34 @@ test('shows who is working above the prompt: text in the terminal, an animated p
 
   const terminal = await $.ui.mount({ ...BAND, surface: 'terminal' })
 
-  expect(await terminal.find({ type: 'Text', text: 'tokensaver ' })).toBeDefined()
-  expect(await terminal.find({ type: 'Text', text: ' search usages' })).toBeDefined()
-  expect((await terminal.find({ type: 'Text', text: 'haiku' }))?.props['color']).toBe('success')
+  expect(await terminal.find({ type: 'Text', text: '▐▛█▜▌' })).toBeDefined()
+  expect(await terminal.find({ type: 'Text', text: /search usages.*→ haiku/ })).toBeDefined()
   expect(await terminal.find({ type: 'Svg' })).toBeUndefined()
   // What was already drawn there stays, beneath.
   expect(await terminal.find({ type: 'Text', text: 'engine AbovePrompt' })).toBeDefined()
 
   const desktop = await $.ui.mount({ ...BAND, surface: 'desktop' })
-  const picture = await desktop.find({ type: 'Svg' })
+  const pictures = await desktop.findAll({ type: 'Svg' })
 
-  expect(String(picture?.props['source'])).toMatch(/haiku · search usages/)
-  expect(String(picture?.props['source'])).toMatch(/<animate /)
-  expect(picture?.props['alt']).toMatch(/tokensaver main ─▸ haiku search usages/)
-  // A picture, not a frame: the frame form draws a white box in the desktop app.
-  expect(picture?.props['isInteractive']).toBeUndefined()
+  expect(pictures).toHaveLength(2)
+  expect(String(pictures[0]?.props['source'])).toMatch(/class="c happy"/)
+  expect(String(pictures[1]?.props['source'])).toMatch(/haiku · search usages/)
+  expect(String(pictures[1]?.props['source'])).toMatch(/<animate /)
+  expect(pictures.every(picture => picture.props['isInteractive'] === undefined)).toBe(true)
   expect(await desktop.find({ type: 'Text', text: 'engine AbovePrompt' })).toBeDefined()
 })
 
-test('the picture holds still under reduced motion', { options: { reducedMotion: true } }, async ($, on) => {
+test('the pictures hold still under reduced motion', { options: { reducedMotion: true } }, async ($, on) => {
   const seen = world(on)
 
   await learn($, seen)
   await $.agent.spawn({ ...SPAWN, tool_use_id: 'call-1', prompt: SEARCH })
 
   const desktop = await $.ui.mount({ ...BAND, surface: 'desktop' })
-  const source = String((await desktop.find({ type: 'Svg' }))?.props['source'])
+  const sources = (await desktop.findAll({ type: 'Svg' })).map(picture => String(picture.props['source']))
 
-  expect(source).toMatch(/haiku · /)
-  expect(source.includes('<animate')).toBe(false)
+  expect(sources.join('')).toMatch(/haiku · /)
+  expect(sources.some(source => source.includes('<animate') || source.includes('@keyframes'))).toBe(false)
 })
 
 test('adds the delegation to the spinner, and leaves the spinner alone otherwise', async ($, on) => {
@@ -640,7 +639,7 @@ test('marks the row of a sub-agent it routed, and no other row', async ($, on) =
   const routed = await $.ui.mount(row('Agent', 'call-1'))
 
   expect(await routed.find({ type: 'Text', text: '◆ tokensaver ' })).toBeDefined()
-  expect((await routed.find({ type: 'Text', text: 'haiku' }))?.props['bold']).toBe(true)
+  expect((await routed.find({ type: 'Text', text: 'haiku' }))?.props['weight']).toBe('semibold')
   expect(await routed.find({ type: 'Text', text: 'engine ToolUse' })).toBeDefined()
 
   for (const other of [row('Agent', 'not-routed'), row('Bash', 'call-1')]) {
@@ -658,7 +657,8 @@ test('every command answers with a visible line', async ($, on) => {
   const doctor = await $.command.run({ ...COMMAND, args: 'doctor' })
   const dashboard = await $.command.run({ ...COMMAND, args: 'dashboard' })
 
-  expect(status.text).toMatch(/^tokensaver is on\n/)
+  expect(status.text).toMatch(/^Clawd ate 0 tokens of noise/)
+  expect(status.text).toMatch(/\ntokensaver is on\n/)
   expect(doctor.text).toMatch(/session model: /)
   expect(doctor.text).toMatch(/display:/)
   expect(dashboard.text).toBe('tokensaver dashboard opened')

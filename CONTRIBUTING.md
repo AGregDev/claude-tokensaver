@@ -4,7 +4,7 @@ Thanks for looking. tokensaver has one goal, token efficiency without hurting re
 
 ## Set up
 
-You need Node 22.18 or later and Claude Code v2.1.287 or later on your `PATH`.
+You need Node 22.18 or later and Claude Code v2.1.299 or later on your `PATH`. [.claude/CLAUDE.md](.claude/CLAUDE.md) is the short version of this file, written for agents, with the engine quirks worth knowing.
 
 ```bash
 npm install
@@ -19,12 +19,13 @@ npm run check
 ```text
 .claude-plugin/     plugin.json (the manifest) and marketplace.json
 hooks/register.tsx  the hooks module: the only file that touches Claude Code's API
-src/core/           scoring, routing, escalation, tuning, the log, savings (pure)
-src/runtime/        the session controller: one pure transition per event
-src/ui/             the status line and dashboard, as plain styled lines
+src/core/           the output trimmer, the context guardian, and routing: scoring, escalation, tuning, the log (pure)
+src/runtime/        Clawd (assistant.ts) and the router (session.ts): one pure transition per event
+src/ui/             Clawd's pictures and glyph art, the sub-agent strip, the view model
 types/index.d.ts    the mod's $.state contract
 tests/              *.spec.ts run under Vitest; engine/*.test.ts run inside Claude Code
-scripts/            types sync, build audit, packaging, README pictures
+tests/fixtures/     realistic noisy outputs; tests/bench/ holds the trimmer's floors
+scripts/            types sync, build audit, bench, packaging, README pictures
 ```
 
 The split matters. Everything under `src/` is pure TypeScript with no dependency on Claude Code, so it is tested exhaustively and fast. `hooks/register.tsx` only translates: an event comes in, a controller function returns the next session plus a list of effects, and the hooks module carries the effects out.
@@ -37,10 +38,11 @@ Two rules of Claude Code's validator shape that file: `$` may be passed only to 
 | :- | :- |
 | `npm run typecheck` | `tsc` in strict mode over everything |
 | `npm run lint` | ESLint with typescript-eslint's strict, type-checked rules |
-| `npm run test:coverage` | Vitest: unit, safety, integration and UI tests, failing under 80% coverage |
+| `npm run test:coverage` | Vitest: unit, safety, integration, UI and efficiency tests, failing under 80% coverage |
 | `npm run test:mod` | `claude plugin test .`: the real hooks module, loaded by the real engine |
 | `npm run build` | `claude plugin validate --strict`, the reach audit, and staging into `dist/` |
 | `npm run check` | All of the above |
+| `npm run bench` | The trimmer's savings and speed on every fixture; `-- --json` for machines |
 
 Run `npm run check` until it is green before you commit.
 
@@ -50,6 +52,7 @@ Run `npm run check` until it is green before you commit.
 - No runtime dependencies. The mod is loaded from source by Claude Code, and shipped code may import only its own files and `claude-code`. The build enforces this.
 - Booleans are named `is…`, `has…`, `should…` and so on.
 - A heuristic change comes with a test that shows the case it fixes.
+- A trimmer change comes with `npm run bench` before and after in the pull request. It may never drop an error line, and a new kind of noise gets a fixture in `tests/fixtures/outputs.ts`.
 
 ## Changing what the mod can reach
 
@@ -67,7 +70,7 @@ A `tool.check` hook, a network call, a process or a model call would each change
 
 ## Releasing
 
-1. Set the same new version in `package.json` and `.claude-plugin/plugin.json`.
+1. Set the same new version in `package.json`, `package-lock.json` and `.claude-plugin/plugin.json`.
 2. Run `npm run check` and `npm run preview` (it regenerates the README pictures).
 3. Commit, then tag `v<version>` and push the tag.
 
