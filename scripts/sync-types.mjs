@@ -15,7 +15,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const declarations = join(root, '.claude-plugin', 'types', 'claude-code', 'index.d.ts')
 const emptyConfig = mkdtempSync(join(tmpdir(), 'tokensaver-types-'))
 
-const env = { ...process.env, CLAUDE_CONFIG_DIR: emptyConfig }
+// Claude Code writes the types only for a plugin folder it watches; since v2.1.299 a headless
+// run watches a --plugin-dir folder only when asked to.
+const env = { ...process.env, CLAUDE_CONFIG_DIR: emptyConfig, CLAUDE_CODE_PLUGIN_DIR_WATCH: '1' }
 
 for (const name of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN']) {
   Reflect.deleteProperty(env, name)

@@ -52,6 +52,7 @@ npm run preview                     # regenerate docs/*.svg from the real render
 - `$.session.compact()` is refused inside a `command.run` hook, because it would compact under that command's own turn. Defer it with `$.clock.after(…)`, which is what `/tokensaver compact` does.
 - An `Svg` drawn with `isInteractive` renders as a white box in the desktop app. Draw plain images; CSS `@keyframes` inside the SVG still animate there.
 - Timers run on `$.clock`, which tests mock, but `Date.now()` is real. Don't compare the two. The idle check reasons from "the timer fired", not from wall-clock differences.
+- `npm run types:sync` works because a headless run writes `.claude-plugin/types/` for a `--plugin-dir` folder it *watches*. Since v2.1.299 that needs `CLAUDE_CODE_PLUGIN_DIR_WATCH=1`, which the script sets. It stops at "Not logged in", so nothing is sent and no tokens are spent.
 - A hot reload re-runs `register`: module variables reset, while `$.store` and `$.state` survive.
 - `session.append` stand-ins in engine tests need Claude Code ≥ 2.1.299. CI pins that version (`CLAUDE_CODE_VERSION` in `.github/workflows`). An older local `claude` fails the four trimmer engine tests; run `claude update`.
 - Files may have CRLF line endings on Windows. Prefer the Edit tool over sed or Python for multi-line edits, and never write regexes containing `\u001b` through a shell heredoc.
