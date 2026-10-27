@@ -399,6 +399,17 @@ const commit = async <Reply,>($: EngineInterface, step: Step<Reply>): Promise<Re
   return step.reply
 }
 
+/** Queues the built-in /compact with Clawd's instructions; false when the engine refuses that too. */
+const compactByCommand = async ($: EngineInterface, instructions: string): Promise<boolean> => {
+  try {
+    await $.command.run({ command: 'compact', args: instructions })
+
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Runs a compaction for Clawd and books what it freed. */
 const compactNow = async ($: EngineInterface, instructions: string): Promise<string> => {
   try {
@@ -414,6 +425,12 @@ const compactNow = async ($: EngineInterface, instructions: string): Promise<str
     return result.skip === undefined ? 'Compacted.' : `Compaction skipped: ${result.skip}`
   } catch (error) {
     assistant = { ...assistant, isCompacting: false }
+
+    // Headless hosts (VS Code, Cursor, the SDK) only compact inside a turn: hand it to /compact,
+    // which waits for the session to be idle and whose own `session.compact` the hook below books.
+    if (await compactByCommand($, instructions)) {
+      return 'Compacting through /compact.'
+    }
 
     const text = `Clawd could not compact now: ${reasonOf(error)}`
 

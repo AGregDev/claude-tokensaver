@@ -58,6 +58,7 @@ const ALLOWED_CALLS = [
   '$.clock.after',
   '$.clock.every',
   '$.command.register',
+  '$.command.run',
   '$.env.get',
   '$.fs.list',
   '$.fs.write',

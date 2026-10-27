@@ -10,10 +10,10 @@ const NOISY = Array.from({ length: 400 }, (_, index) =>
   index % 50 === 0 ? `\u001b[33mwarn\u001b[0m step ${String(index)}` : 'npm WARN deprecated left-pad@1.0.0',
 ).join('\n')
 
-type World = { toasts: string[]; logs: string[]; compacts: (string | undefined)[]; clock: MockClock; saved: Map<string, unknown> }
+type World = { toasts: string[]; logs: string[]; compacts: (string | undefined)[]; commands: string[]; clock: MockClock; saved: Map<string, unknown> }
 
-const world = (on: On, env: Record<string, string> = {}): World => {
-  const seen: World = { toasts: [], logs: [], compacts: [], clock: mock.clock(on), saved: new Map() }
+const world = (on: On, env: Record<string, string> = {}, isHeadless = false): World => {
+  const seen: World = { toasts: [], logs: [], compacts: [], commands: [], clock: mock.clock(on), saved: new Map() }
 
   mock.env(on, env)
   on('ui.log', (_$, e) => {
@@ -50,7 +50,16 @@ const world = (on: On, env: Record<string, string> = {}): World => {
     }
   })
   on('session.measure', (_$, e) => ({ changed: e.changed }))
+  on('command.run', { command: 'compact' }, (_$, e) => {
+    seen.commands.push(`/compact ${e.args}`)
+
+    return { text: '' }
+  })
   on('session.compact', (_$, e) => {
+    if (isHeadless) {
+      throw new Error('$.session.compact: not available in a headless (-p / SDK) session yet')
+    }
+
     seen.compacts.push(e.instructions ?? `(no instructions: ${JSON.stringify(Object.keys(e))})`)
 
     const summary: SessionMessage = { role: 'user', text: 'summary', toolUses: [] }
@@ -201,6 +210,24 @@ test('warns as the context fills, and the band offers to compact', async ($, on)
 
   expect(seen.compacts).toHaveLength(1)
   expect(seen.compacts[0]).toMatch(/Keep: the current goal/)
+})
+
+test('compacts through /compact where the session is headless', async ($, on) => {
+  const seen = world(on, {}, true)
+
+  await $.prompt.submit({ text: 'migrate the billing service to the new queue', wait: false, origin: { kind: 'composer' } })
+  await $.turn.complete({ turnId: 't1', answer: 'done', durationMs: 5, isAborted: false, reason: 'answer' })
+  await $.command.run({
+    command: 'tokensaver',
+    args: 'compact',
+    origin: { kind: 'composer' },
+    presentation: { isFullscreen: true, columns: 120 },
+  })
+  await seen.clock.advance(100)
+
+  expect(seen.commands).toHaveLength(1)
+  expect(seen.commands[0]).toMatch(/^\/compact .*migrate the billing service/s)
+  expect(seen.toasts.some(toast => toast.includes('could not compact'))).toBe(false)
 })
 
 test('/tokensaver compact keeps the recent asks in focus and books what it freed', async ($, on) => {

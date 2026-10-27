@@ -296,6 +296,7 @@ This is the complete list, as `claude plugin validate` reads it from the source.
 | `$.state.get`, `set` | Redrawing the pane |
 | `$.clock.every`, `after` | The animation timer; the cold-cache check; starting a compaction once a command has returned |
 | `$.session.compact` | Compacting, when you press Compact now or run `/tokensaver compact`, or past `autoCompactAt` if you set it |
+| `$.command.run` | Only `/compact`, with the same instructions, when the session refuses a direct compaction (headless: VS Code, Cursor, the SDK) |
 | `$.command.register`, `$.session.surfaces`, `$.session.model` | Its command; telling the CLI from the desktop app; knowing which model the session runs on |
 
 It does not call a model, start a sub-agent or a process, make a network request, read the contents of your files, or change a permission. The only text it changes is shell output and pasted logs on their way into the conversation, as described above.
