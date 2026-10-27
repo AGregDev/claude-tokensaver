@@ -38,10 +38,12 @@ import type { Assistant, AssistantOverrides, AssistantStep } from '../src/runtim
 import {
   hydrate,
   isAnimating,
+  isQuiet,
   onAgentResult,
   onCommand,
   onDiagnostic,
   onFacts,
+  onHost,
   onMeasure,
   onPrompt,
   onSpawn,
@@ -58,6 +60,7 @@ import {
   bubbleRows,
   clawdArt,
   heroSvg,
+  stripOf,
   tilesSvg,
 } from '../src/ui/clawd.ts'
 import type { ClawdView } from '../src/ui/clawd.ts'
@@ -201,6 +204,7 @@ const clawdView = (now = Date.now()): ClawdView => {
     mode: view.mode,
     hasMotion: !session.config.hasReducedMotion,
     hasColor: !session.hasNoColor,
+    isQuiet: isQuiet(session),
     context: { ...assistant.context, percent: fillOf(assistant) },
     ghost: assistant.live,
     stats: {
@@ -264,13 +268,22 @@ const openPane = async ($: EngineInterface, why: string): Promise<void> => {
   }
 }
 
+/** Tells the person something they did not ask for: a toast, or quietly the log. */
+const notify = ($: EngineInterface, text: string): void => {
+  if (isQuiet(session)) {
+    $.ui.log(text)
+  } else {
+    $.ui.toast(text)
+  }
+}
+
 const saveLifetime = ($: EngineInterface): Promise<void> =>
   attempt(() => $.store.set(STORE_LIFETIME, lifetime), undefined)
 
 const run = async ($: EngineInterface, effect: Effect): Promise<void> => {
   switch (effect.kind) {
     case 'toast':
-      $.ui.toast(effect.text)
+      notify($, effect.text)
       break
     case 'log':
       $.ui.log(effect.text)
@@ -300,7 +313,7 @@ const run = async ($: EngineInterface, effect: Effect): Promise<void> => {
 
 /** True while something on screen moves or must be taken down on time. */
 const needsClock = (): boolean =>
-  isAnimating(session) || (session.config.isEnabled && hasFlare(assistant, Date.now()))
+  isAnimating(session) || (session.config.isEnabled && !isQuiet(session) && hasFlare(assistant, Date.now()))
 
 /** Redraws the status line and everything the mod draws. Display only: nothing here reaches the model. */
 const refresh = ($: EngineInterface): void => {
@@ -336,14 +349,22 @@ const refresh = ($: EngineInterface): void => {
  * appeared: when an app attaches, and at the start of every turn.
  */
 const sync = async ($: EngineInterface, why: string): Promise<void> => {
-  const surfaces = await attempt(() => $.session.surfaces(), [])
+  const [surfaces, termProgram, entrypoint] = await Promise.all([
+    attempt(() => $.session.surfaces(), []),
+    attempt(() => $.env.get('TERM_PROGRAM'), undefined),
+    attempt(() => $.env.get('CLAUDE_CODE_ENTRYPOINT'), undefined),
+  ])
+
+  session = onHost(session, { termProgram, entrypoint }).session
 
   // Send the status line again even when its text has not changed.
   shownStatus = undefined
 
   // A surface with room beside the transcript gets the pane; the terminal gets the status line and strip.
+  // Quiet, the pane waits for `/tokensaver dashboard`.
   if (
     session.config.isEnabled &&
+    !isQuiet(session) &&
     !isPaneOpen &&
     !wasPaneClosedByPerson &&
     surfaces.some(surface => surface !== 'terminal')
@@ -378,6 +399,17 @@ const commit = async <Reply,>($: EngineInterface, step: Step<Reply>): Promise<Re
   return step.reply
 }
 
+/** Queues the built-in /compact with Clawd's instructions; false when the engine refuses that too. */
+const compactByCommand = async ($: EngineInterface, instructions: string): Promise<boolean> => {
+  try {
+    await $.command.run({ command: 'compact', args: instructions })
+
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Runs a compaction for Clawd and books what it freed. */
 const compactNow = async ($: EngineInterface, instructions: string): Promise<string> => {
   try {
@@ -393,6 +425,12 @@ const compactNow = async ($: EngineInterface, instructions: string): Promise<str
     return result.skip === undefined ? 'Compacted.' : `Compaction skipped: ${result.skip}`
   } catch (error) {
     assistant = { ...assistant, isCompacting: false }
+
+    // Headless hosts (VS Code, Cursor, the SDK) only compact inside a turn: hand it to /compact,
+    // which waits for the session to be idle and whose own `session.compact` the hook below books.
+    if (await compactByCommand($, instructions)) {
+      return 'Compacting through /compact.'
+    }
 
     const text = `Clawd could not compact now: ${reasonOf(error)}`
 
@@ -410,7 +448,7 @@ const commitAssistant = async <Reply,>($: EngineInterface, step: AssistantStep<R
 
   for (const effect of step.effects) {
     if (effect.kind === 'toast') {
-      $.ui.toast(effect.text)
+      notify($, effect.text)
     } else if (effect.kind === 'compact') {
       // Never awaited by the hook that noticed the need: it compacts once the turn has let go.
       void compactNow($, effect.instructions)
@@ -449,7 +487,7 @@ const armIdleCheck = ($: EngineInterface): void => {
     assistant = onIdleCheck(assistant, { now: Math.max(Date.now(), firesAt), isEnabled: session.config.isEnabled })
 
     if (assistant.isCold && !wasCold) {
-      $.ui.toast(`Clawd: ${speechOf(assistant, { now: Date.now(), isEnabled: true, activeAgents: 0 })}`)
+      notify($, `Clawd: ${speechOf(assistant, { now: Date.now(), isEnabled: true, activeAgents: 0 })}`)
       refresh($)
     }
   })
@@ -633,8 +671,17 @@ export const register: Register = (on, options) => {
   wasPaneClosedByPerson = false
 
   on('session.start', async ($, e, next) => {
-    const [storedLog, storedThresholds, storedSettings, storedDelegation, storedAssistant, storedLifetime, noColor] =
-      await Promise.all([
+    const [
+      storedLog,
+      storedThresholds,
+      storedSettings,
+      storedDelegation,
+      storedAssistant,
+      storedLifetime,
+      noColor,
+      termProgram,
+      entrypoint,
+    ] = await Promise.all([
         attempt(() => $.store.get(STORE_LOG), undefined),
         attempt(() => $.store.get(STORE_THRESHOLDS), undefined),
         attempt(() => $.store.get(STORE_SETTINGS), undefined),
@@ -642,6 +689,8 @@ export const register: Register = (on, options) => {
         attempt(() => $.store.get(STORE_ASSISTANT), undefined),
         attempt(() => $.store.get(STORE_LIFETIME), undefined),
         attempt(() => $.env.get('NO_COLOR'), undefined),
+        attempt(() => $.env.get('TERM_PROGRAM'), undefined),
+        attempt(() => $.env.get('CLAUDE_CODE_ENTRYPOINT'), undefined),
       ])
 
     assistantOverrides = parseAssistantOverrides(storedAssistant)
@@ -650,14 +699,14 @@ export const register: Register = (on, options) => {
 
     await commit(
       $,
-      hydrate({ options, storedLog, storedThresholds, storedSettings, storedDelegation, noColor }),
+      hydrate({ options, storedLog, storedThresholds, storedSettings, storedDelegation, noColor, termProgram, entrypoint }),
     )
     await attempt(
       () =>
         $.command.register({
           name: 'tokensaver',
           description: 'Clawd, your token saver: status, compact, trim, on/off, dashboard, doctor',
-          argumentHint: '[compact|trim|pastes|autocompact|on|off|dry-run|dashboard|doctor|motion|export|reset|help]',
+          argumentHint: '[compact|trim|pastes|autocompact|on|off|dry-run|dashboard|doctor|motion|quiet|export|reset|help]',
           immediate: true,
         }),
       undefined,
@@ -977,10 +1026,11 @@ export const register: Register = (on, options) => {
     const view = clawdView()
     const routing = toView(session)
     const hasAgents = isBandVisible(routing) && routing.band.agents.length > 0
-    const shouldOffer = view.mood === 'sleepy' || (view.mood === 'worried' && view.context.percent >= 70)
-    const isVisible =
-      view.mode !== 'off' &&
-      (hasFlare(assistant, Date.now()) || shouldOffer || hasAgents || (isBandVisible(routing) && routing.band.flash !== undefined))
+    const { isVisible, shouldOffer } = stripOf(view, {
+      isFlaring: hasFlare(assistant, Date.now()),
+      hasAgents,
+      hasFlash: isBandVisible(routing) && routing.band.flash !== undefined,
+    })
 
     if (!isVisible || e.props.hasSurvey) {
       return next(e)
@@ -1054,7 +1104,9 @@ export const register: Register = (on, options) => {
         <Box flexDirection="column">
           {row}
           <Text {...tint(!session.hasNoColor, 'success')} dimColor>
-            {`  ▐▛█▜▌ Clawd ate ${formatTokens(cut)} tokens of noise from this output`}
+            {isQuiet(session)
+              ? `  tokensaver trimmed ${formatTokens(cut)} tokens of noise`
+              : `  ▐▛█▜▌ Clawd ate ${formatTokens(cut)} tokens of noise from this output`}
           </Text>
         </Box>
       )
@@ -1151,7 +1203,7 @@ export const register: Register = (on, options) => {
       )
     }
 
-    const art = clawdArt(view)
+    const art = view.isQuiet ? [] : clawdArt(view)
     const bubble = bubbleRows(view, columns)
     const meter = view.context.window > 0
       ? `${bar(view.context.percent / 100, Math.max(10, columns - 30))} ${String(view.context.percent)}%  ${formatTokens(view.context.tokens)}/${formatTokens(view.context.window)}`
@@ -1159,12 +1211,16 @@ export const register: Register = (on, options) => {
 
     return (
       <Box flexDirection="column">
-        {art.map((row, index) => (
-          <Box>
-            <Text {...tint(view.hasColor, (view.mood === 'off' ? 'inactive' : 'claude'))}>{row}</Text>
-            <Text>{`  ${bubble[index] ?? ''}`}</Text>
-          </Box>
-        ))}
+        {view.isQuiet ? (
+          <Text>{view.speech}</Text>
+        ) : (
+          art.map((row, index) => (
+            <Box>
+              <Text {...tint(view.hasColor, (view.mood === 'off' ? 'inactive' : 'claude'))}>{row}</Text>
+              <Text>{`  ${bubble[index] ?? ''}`}</Text>
+            </Box>
+          ))
+        )}
         <Text> </Text>
         <Text weight="semibold">Context</Text>
         <Text {...tint(view.hasColor, (view.context.percent >= 85 ? 'error' : view.context.percent >= 70 ? 'warning' : 'claude'))}>{meter}</Text>

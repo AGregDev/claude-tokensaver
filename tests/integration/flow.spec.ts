@@ -10,6 +10,7 @@ import {
   activeCount,
   hydrate,
   isAnimating,
+  isQuiet,
   onAgentResult,
   onCommand,
   onMeasure,
@@ -351,6 +352,29 @@ describe('fallback', () => {
       kind: 'log',
       text: expect.stringContaining('1 unreadable entry dropped'),
     })
+  })
+
+  it('keeps quiet by default inside VS Code and Cursor, and lets the person choose', () => {
+    const base = { options: {}, storedLog: undefined, storedThresholds: undefined, storedSettings: undefined, noColor: undefined }
+    const terminal = hydrate({ ...base, termProgram: 'iTerm.app' }).session
+    const editor = hydrate({ ...base, termProgram: 'vscode' }).session
+    const extension = hydrate({ ...base, entrypoint: 'claude-vscode' }).session
+
+    expect(isQuiet(terminal)).toBe(false)
+    expect(isQuiet(editor)).toBe(true)
+    expect(isQuiet(extension)).toBe(true)
+    expect(isQuiet(hydrate({ ...base, options: { quiet: 'off' }, termProgram: 'vscode' }).session)).toBe(false)
+    expect(isQuiet(hydrate({ ...base, options: { quiet: 'on' } }).session)).toBe(true)
+
+    const toggled = onCommand(editor, 'quiet', 0)
+
+    expect(isQuiet(toggled.session)).toBe(false)
+    expect(toggled.effects).toEqual([{ kind: 'save-settings' }])
+    expect(toggled.session.overrides.quiet).toBe('off')
+    expect(isQuiet(onCommand(terminal, 'quiet on', 0).session)).toBe(true)
+    expect(onCommand(terminal, 'quiet auto', 0).reply.text).toContain('off, outside an editor')
+    expect(isQuiet(hydrate({ ...base, storedSettings: { quiet: 'on' } }).session)).toBe(true)
+    expect(onCommand(editor, 'doctor', 0).reply.text).toContain('quiet on (auto, editor detected)')
   })
 
   it('applies learning from a stored log when the session starts', () => {

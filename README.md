@@ -13,7 +13,7 @@ Most token waste in a long session isn't the work itself. It's noise that piles 
 - **Wakes you up to a cold cache.** If you have been idle longer than the prompt cache lives, Clawd tells you that your next message re-writes the whole context to the cache, and how much less it would cost after compacting.
 - **Routes helpers to cheaper models.** When Claude starts a sub-agent, tokensaver picks the cheapest model tier that can do the job, and retries one tier up if the result fails its checks.
 
-Everything except routing works on its own, every turn: none of it depends on Claude choosing to delegate. It works in the Claude Code CLI and in the Code tab of the desktop app.
+Everything except routing works on its own, every turn: none of it depends on Claude choosing to delegate. It works in the Claude Code CLI, in the Code tab of the desktop app, and in VS Code and Cursor, where it keeps quiet by default.
 
 ![Clawd's pane: the mascot with its speech bubble, the context meter with the hatched share Clawd kept out, and the savings tiles](docs/clawd-pane.svg)
 
@@ -79,7 +79,9 @@ Every Bash and PowerShell result (and background shell output) passes through Cl
 | Progress bars | frames a carriage return overwrote; only the last one was ever visible | lossless |
 | Blank runs | trailing spaces, and runs of blank lines folded to one | lossless |
 | Repeated lines | 3 or more identical lines in a row become one line plus a count | lossless |
+| Finished bars | a line that is only a progress bar and its numbers (`━━━━ 13.0/13.0 kB 1.1 MB/s eta 0:00:00`), printed without a terminal. The line before it already names the download | full |
 | Look-alike lines | 6 or more lines that differ only in numbers or hashes keep the first two, a count and the last one. Error and warning lines are never folded | full |
+| Look-alike groups | 4 or more groups of 2 to 8 lines that repeat line for line (pip's collect/download pairs, one block per build step) keep the first group, a count and the last group. A group holding an error or warning line is never folded | full |
 | Huge outputs | past `maxOutputLines` (300 by default), the head and tail are kept, plus every error or warning line from the middle, with a note saying what was cut and how to see it | full |
 
 File reads, searches, errors and anything a tool marks as failed are never touched. A trim that would save fewer than about 40 tokens is skipped. In the transcript, a trimmed row gets a line saying how much Clawd ate.
@@ -181,6 +183,8 @@ Clawd lives in three places, and its mood follows the session:
 
 Animation is CSS inside the picture, so it costs nothing while idle. `reducedMotion` (or `/tokensaver motion off`) stills everything, and `NO_COLOR` removes every colour from the text views.
 
+**Quiet mode** is on by default in VS Code and Cursor (their panel and terminal draw block glyphs badly, and turn every toast into a notification). Quiet, Clawd shows no pop-ups (they go to the log), draws no glyph art, does not open its pane by itself, and shows the band above the prompt only while there is something to do: a heavy context or a cold cache, with **Compact now**. The trimming, warnings and routing are unchanged. `/tokensaver quiet on|off|auto` or the `quiet` option chooses.
+
 ### What the figures mean
 
 All of them are estimates (about 4 characters to a token). They are kept apart because adding them up would count the same tokens twice.
@@ -203,6 +207,7 @@ All of them are estimates (about 4 characters to a token). They are kept apart b
 | `/tokensaver dry-run [on\|off]` | Only show what would have been trimmed or rerouted |
 | `/tokensaver dashboard` | Open Clawd's pane |
 | `/tokensaver motion [on\|off]` | Animations |
+| `/tokensaver quiet [on\|off\|auto]` | No pop-ups or glyph art; `auto` is quiet in VS Code and Cursor |
 | `/tokensaver doctor` | What tokensaver knows and what the display reported. Run this first if nothing shows |
 | `/tokensaver export [path]` | Write the routing outcome log as JSON to a local file |
 | `/tokensaver reset` | Clear the routing log and the learned thresholds |
@@ -227,6 +232,7 @@ Set these when you install, or later with `/plugin configure tokensaver@claude-t
 | `contextHint` | `true` | Add the one-line delegation hint to prompts where delegating pays |
 | `statusLine` | `true` | Show the status line under the prompt |
 | `reducedMotion` | `false` | Turn off all animation |
+| `quiet` | `auto` | No pop-ups, no glyph art, the band only when you can act. `auto`: on in VS Code and Cursor |
 
 ## How self-training works
 
@@ -285,11 +291,12 @@ This is the complete list, as `claude plugin validate` reads it from the source.
 | `$.store.get`, `set`, `delete` | The local log, thresholds and switches |
 | `$.fs.write` | `/tokensaver export`, to the path you give |
 | `$.fs.list` | Counting the repository's files once per session: names only, a few folders deep, capped |
-| `$.env.get` | Reading `NO_COLOR`, and nothing else |
+| `$.env.get` | Reading `NO_COLOR`, plus `TERM_PROGRAM` and `CLAUDE_CODE_ENTRYPOINT` to tell VS Code and Cursor from a plain terminal, and nothing else |
 | `$.ui.status`, `toast`, `log`, `open`, `resolve` | Display |
 | `$.state.get`, `set` | Redrawing the pane |
 | `$.clock.every`, `after` | The animation timer; the cold-cache check; starting a compaction once a command has returned |
 | `$.session.compact` | Compacting, when you press Compact now or run `/tokensaver compact`, or past `autoCompactAt` if you set it |
+| `$.command.run` | Only `/compact`, with the same instructions, when the session refuses a direct compaction (headless: VS Code, Cursor, the SDK) |
 | `$.command.register`, `$.session.surfaces`, `$.session.model` | Its command; telling the CLI from the desktop app; knowing which model the session runs on |
 
 It does not call a model, start a sub-agent or a process, make a network request, read the contents of your files, or change a permission. The only text it changes is shell output and pasted logs on their way into the conversation, as described above.

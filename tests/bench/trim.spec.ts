@@ -13,7 +13,8 @@ const FLOORS: Readonly<Record<string, number>> = {
   'npm install': 0.9,
   'jest run': 0.9,
   'cargo build': 0.9,
-  'docker build': 0.5,
+  'docker build': 0.9,
+  'pip install': 0.9,
   'server log (2.4k lines)': 0.95,
   'git diff --stat (clean)': 0,
 }

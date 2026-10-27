@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { onSpawn, onSpawned } from '../../src/runtime/session.ts'
 import type { Session } from '../../src/runtime/session.ts'
-import { heroSvg, bandLineOf, bandSvgOf, clawdArt, tilesSvg, wrap } from '../../src/ui/clawd.ts'
+import { heroSvg, bandLineOf, bandSvgOf, clawdArt, stripOf, tilesSvg, wrap } from '../../src/ui/clawd.ts'
 import type { ClawdView } from '../../src/ui/clawd.ts'
 import { bar, fit, formatTokens, spinner } from '../../src/ui/format.ts'
 import { span } from '../../src/ui/theme.ts'
@@ -143,6 +143,7 @@ const clawd = (overrides: Partial<ClawdView> = {}): ClawdView => ({
   mode: 'on',
   hasMotion: true,
   hasColor: true,
+  isQuiet: false,
   context: { tokens: 84_000, window: 200_000, percent: 42 },
   ghost: 23_000,
   stats: { eaten: 31_200, reReads: 412_000, compactFreed: 138_000, routed: 9100, keptOut: 4000, trims: 17, compactions: 1 },
@@ -190,6 +191,26 @@ describe('clawd', () => {
 
     expect(line.every(part => part.tone === undefined)).toBe(true)
     expect(line.map(part => part.text).join('').length).toBeLessThanOrEqual(42)
+  })
+
+  it('draws no glyph face when quiet', () => {
+    const text = bandLineOf(clawd({ isQuiet: true }), 60).map(part => part.text).join('')
+
+    expect(text).toMatch(/^tokensaver /)
+    expect(text).not.toMatch(/[▐▛█▜▌▄▀▝▘◂▪]/u)
+    expect(text.length).toBeLessThanOrEqual(62)
+  })
+
+  it('shows the strip for passing moods only when not quiet', () => {
+    const lively = { isFlaring: true, hasAgents: true, hasFlash: true }
+    const calm = { isFlaring: false, hasAgents: false, hasFlash: false }
+
+    expect(stripOf(clawd(), lively).isVisible).toBe(true)
+    expect(stripOf(clawd(), calm).isVisible).toBe(false)
+    expect(stripOf(clawd({ isQuiet: true }), lively).isVisible).toBe(false)
+    expect(stripOf(clawd({ isQuiet: true, mood: 'sleepy' }), calm)).toEqual({ isVisible: true, shouldOffer: true })
+    expect(stripOf(clawd({ isQuiet: true, mood: 'worried', context: { tokens: 150_000, window: 200_000, percent: 75 } }), calm).shouldOffer).toBe(true)
+    expect(stripOf(clawd({ mode: 'off', mood: 'sleepy' }), lively).isVisible).toBe(false)
   })
 
   it('blinks in the terminal now and then, never while asleep', () => {

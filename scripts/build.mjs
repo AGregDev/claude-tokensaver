@@ -58,6 +58,7 @@ const ALLOWED_CALLS = [
   '$.clock.after',
   '$.clock.every',
   '$.command.register',
+  '$.command.run',
   '$.env.get',
   '$.fs.list',
   '$.fs.write',
@@ -76,7 +77,7 @@ const ALLOWED_CALLS = [
   '$.ui.toast',
 ]
 
-const ALLOWED_ENV_READS = ['NO_COLOR']
+const ALLOWED_ENV_READS = ['NO_COLOR', 'TERM_PROGRAM', 'CLAUDE_CODE_ENTRYPOINT']
 
 const fail = message => {
   console.error(`build: ${message}`)
