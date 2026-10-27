@@ -1,6 +1,6 @@
 {
   "name": "tokensaver",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Clawd, a token-saving assistant: trims noisy tool output and pasted logs before they fill your context, tells you when to compact (and does it in one click), warns when the prompt cache goes cold, and routes sub-agents to cheaper models.",
   "author": {
     "name": "AGregDev",
