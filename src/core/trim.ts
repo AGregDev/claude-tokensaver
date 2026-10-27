@@ -5,9 +5,11 @@
  *
  * Two levels. `lossless` only removes what carries no information for the
  * model (colour codes, overwritten progress frames, trailing blanks, runs of
- * identical lines, counted). `full` also folds long runs of same-shaped lines
- * and caps a giant output to its head and tail, keeping every line in the cut
- * middle that looks like an error or a warning, and says exactly what it cut.
+ * identical lines, counted). `full` also drops finished progress-bar lines,
+ * folds long runs of same-shaped lines (and of same-shaped groups of lines,
+ * such as a package manager's collect/download/bar triplets), and caps a giant
+ * output to its head and tail, keeping every line in the cut middle that looks
+ * like an error or a warning, and says exactly what it cut.
  */
 import { estimateTokens } from './savings.ts'
 
@@ -41,6 +43,16 @@ const REPEAT_RUN = 3
 const SIMILAR = { minRun: 6, head: 2, tail: 1 } as const
 /** Same-kind lines (one per crate, request or file, sharing their first word): only a long run is folded. */
 const KINDRED = { minRun: 20, head: 3, tail: 2 } as const
+/** Same-shaped groups of 2 to 8 lines (one per package or build step): this many in a row are folded to the first and last. */
+const GROUPS = { maxPeriod: 8, minRepeats: 4 } as const
+
+/**
+ * A finished progress bar printed without a terminal: a run of bar glyphs and
+ * nothing else but numbers, units, rates and an ETA. The line before it already
+ * says what was being fetched or built.
+ */
+const BAR_LINE =
+  /^(?=.*\d)\s*[[|(]?\s*[━─═█▉▊▋▌▍▎▏▓▒░■□=#>-]{10,}\s*[\]|)]?(?:[\s\d.,:/%]|[kMGT]?i?B\b|\/s\b|it\b|eta\b|ETA\b)*$/
 
 // CSI sequences, OSC sequences (terminated by BEL or ST), and lone two-byte escapes.
 // eslint-disable-next-line no-control-regex
@@ -162,6 +174,57 @@ const fold = (
   return { lines: out, isChanged }
 }
 
+/**
+ * Folds runs of same-shaped groups: `period` lines whose shapes repeat, group
+ * after group, keeping the first and last group and a count. Error and warning
+ * lines have no shape here, so a group holding one is never folded.
+ */
+const foldGroups = (
+  lines: readonly string[],
+  period: number,
+  shape: (line: string) => string,
+): { lines: string[]; isChanged: boolean } => {
+  const keys = lines.map(line => (isError(line) || WARNING.test(line) || line.trim() === '' ? '' : shape(line)))
+  const out: string[] = []
+  let isChanged = false
+  let index = 0
+
+  while (index < lines.length) {
+    let end = index
+
+    // How far each line matches the one a period later.
+    while (end + period < lines.length && keys[end] !== '' && keys[end] === keys[end + period]) {
+      end += 1
+    }
+
+    const groups = Math.floor((end - index + period) / period)
+    const span = groups * period
+    // A "group" of one repeated shape is a plain run, which the line folds handle.
+    const isGroup = new Set(keys.slice(index, index + period)).size > 1
+    // A long run of one kind (every line `npm WARN …`) folds tighter as kindred lines.
+    const isKindred = span >= KINDRED.minRun && new Set(lines.slice(index, index + span).map(kindOf)).size === 1
+
+    if (groups >= GROUPS.minRepeats && isGroup && !isKindred) {
+      out.push(
+        ...lines.slice(index, index + period),
+        `  [… ${String(groups - 2)} more groups of ${String(period)} lines like these]`,
+        ...lines.slice(index + span - period, index + span),
+      )
+      isChanged = true
+      index += span
+    } else if (groups >= GROUPS.minRepeats) {
+      // A run left to the line folds goes through whole: rescanning it from each line would be quadratic.
+      out.push(...lines.slice(index, index + span))
+      index += span
+    } else {
+      out.push(lines[index] ?? '')
+      index += 1
+    }
+  }
+
+  return { lines: out, isChanged }
+}
+
 const cap = (lines: readonly string[], maxLines: number): { lines: string[]; isChanged: boolean } => {
   if (lines.length <= maxLines) {
     return { lines: [...lines], isChanged: false }
@@ -230,10 +293,38 @@ export const trimOutput = (text: string, options: TrimOptions = DEFAULT_TRIM): T
   let lines = repeated.lines
 
   if (options.level === 'full') {
-    const similar = fold(lines, shapeOf, SIMILAR)
-    const kindred = fold(similar.lines, kindOf, KINDRED)
+    const unbarred = lines.filter(line => !BAR_LINE.test(line))
 
-    if (similar.isChanged || kindred.isChanged) {
+    if (unbarred.length < lines.length && !actions.includes('progress')) {
+      actions.push('progress')
+    }
+
+    const similar = fold(unbarred, shapeOf, SIMILAR)
+    let grouped = { lines: similar.lines, isChanged: false }
+    const shapes = new Map<string, string>()
+    const shape = (line: string): string => {
+      const known = shapes.get(line)
+
+      if (known !== undefined) {
+        return known
+      }
+
+      const made = shapeOf(line)
+
+      shapes.set(line, made)
+
+      return made
+    }
+
+    for (let period = 2; period <= GROUPS.maxPeriod; period += 1) {
+      const next = foldGroups(grouped.lines, period, shape)
+
+      grouped = { lines: next.lines, isChanged: grouped.isChanged || next.isChanged }
+    }
+
+    const kindred = fold(grouped.lines, kindOf, KINDRED)
+
+    if (similar.isChanged || grouped.isChanged || kindred.isChanged) {
       actions.push('similar')
     }
 

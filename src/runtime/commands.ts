@@ -8,6 +8,8 @@ export type Command =
   /** `value` undefined toggles. */
   | { kind: 'dry-run'; value: boolean | undefined }
   | { kind: 'motion'; value: boolean | undefined }
+  /** `value` undefined toggles. */
+  | { kind: 'quiet'; value: 'on' | 'off' | 'auto' | undefined }
   | { kind: 'export'; path: string | undefined }
   | { kind: 'unknown'; word: string }
 
@@ -19,6 +21,7 @@ export const HELP_TEXT = [
   '/tokensaver dry-run [on|off]   only show what would be delegated',
   '/tokensaver dashboard    open the dashboard pane',
   '/tokensaver motion [on|off]    animations',
+  '/tokensaver quiet [on|off|auto]   no pop-ups or glyph art (auto: on in VS Code and Cursor)',
   '/tokensaver export [path]      write the local outcome log as JSON',
   '/tokensaver reset        clear the outcome log and learned thresholds',
   '/tokensaver doctor       what tokensaver knows and what the display reported',
@@ -60,6 +63,12 @@ export const parseCommand = (args: string): Command => {
       return { kind: 'dry-run', value: switchOf(rest[0]?.toLowerCase()) }
     case 'motion':
       return { kind: 'motion', value: switchOf(rest[0]?.toLowerCase()) }
+    case 'quiet':
+    case 'subtle': {
+      const value = rest[0]?.toLowerCase()
+
+      return { kind: 'quiet', value: value === 'on' || value === 'off' || value === 'auto' ? value : undefined }
+    }
     case 'export':
       return { kind: 'export', path: argument === '' ? undefined : argument }
     default:

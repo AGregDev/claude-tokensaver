@@ -30,7 +30,7 @@ import { rankOf, rankOfModel, tierOfModel } from '../core/tiers.ts'
 import type { Tier } from '../core/tiers.ts'
 import { learnFromOutcome, tighten, tuneFromLog } from '../core/tune.ts'
 import { DEFAULT_EXPORT_PATH, HELP_TEXT, parseCommand } from './commands.ts'
-import { applyOverrides, isNoColor, parseOptions, parseOverrides } from './config.ts'
+import { applyOverrides, isEditorHost, isNoColor, isQuietOf, parseOptions, parseOverrides } from './config.ts'
 import type { Config, Overrides } from './config.ts'
 import { formatTokens } from '../ui/format.ts'
 
@@ -82,6 +82,8 @@ export type Session = {
   config: Config
   overrides: Overrides
   hasNoColor: boolean
+  /** Claude Code runs inside VS Code or a fork of it, where `quiet: auto` keeps Clawd quiet. */
+  isInEditor: boolean
   thresholds: Thresholds
   outcomes: readonly Outcome[]
   spend: Spend
@@ -207,6 +209,9 @@ export type HydrateInput = {
   storedSettings: unknown
   storedDelegation?: unknown
   noColor: string | undefined
+  /** `TERM_PROGRAM` and `CLAUDE_CODE_ENTRYPOINT`, to tell an editor from a terminal. */
+  termProgram?: string | undefined
+  entrypoint?: string | undefined
 }
 
 /** Builds the session from the plugin's options and whatever the local store holds. */
@@ -217,6 +222,7 @@ export const hydrate = (input: HydrateInput): Step<undefined> => {
     config: applyOverrides(parseOptions(input.options), overrides),
     overrides,
     hasNoColor: isNoColor(input.noColor),
+    isInEditor: isEditorHost({ termProgram: input.termProgram, entrypoint: input.entrypoint }),
     thresholds: tuneFromLog(parseThresholds(input.storedThresholds), log.outcomes),
     outcomes: log.outcomes,
     spend: { haiku: 0, sonnet: 0, opus: 0, other: 0 },
@@ -261,6 +267,12 @@ export const hydrate = (input: HydrateInput): Step<undefined> => {
 /** What the display layer learned about the session: its model and how big the repository is. */
 export const onFacts = (session: Session, facts: Partial<SessionFacts>): Step<undefined> =>
   still({ ...session, facts: { ...session.facts, ...facts } }, undefined)
+
+/** Where Claude Code runs, read again whenever the display syncs: a hot reload loses what `session.start` read. */
+export const onHost = (
+  session: Session,
+  env: { termProgram: string | undefined; entrypoint: string | undefined },
+): Step<undefined> => still({ ...session, isInEditor: isEditorHost(env) }, undefined)
 
 /** Keeps a line for `/tokensaver doctor`: what was asked of the display and what came back. */
 export const onDiagnostic = (session: Session, line: string): Step<undefined> =>
@@ -873,6 +885,9 @@ export const onTick = (session: Session, now = session.now): Step<undefined> => 
   )
 }
 
+/** Whether Clawd keeps quiet now: no toasts, no glyph art, the strip only when the person can act. */
+export const isQuiet = (session: Session): boolean => isQuietOf(session.config, session.isInEditor)
+
 const modeOf = (config: Config): string => {
   if (!config.isEnabled) {
     return 'off'
@@ -906,6 +921,7 @@ const doctorReport = (session: Session): string => {
     `agent types seen: ${types === '' ? 'none yet' : types}`,
     `a delegation suggestion must save at least ${formatTokens(session.minSaving)} tokens`,
     `colour ${session.hasNoColor ? 'off (NO_COLOR)' : 'on'}, motion ${session.config.hasReducedMotion ? 'off' : 'on'}`,
+    `quiet ${isQuiet(session) ? 'on' : 'off'} (${session.config.quiet}${session.config.quiet === 'auto' ? `, ${session.isInEditor ? 'editor' : 'no editor'} detected` : ''})`,
     'display:',
     ...(session.diagnostics.length === 0
       ? ['  nothing reported yet']
@@ -968,6 +984,18 @@ export const onCommand = (session: Session, args: string, now: number): Step<Com
         { ...session, shownSaved: session.saved },
         { hasReducedMotion: !hasMotion },
         `tokensaver animations are ${hasMotion ? 'on' : 'off'}`,
+      )
+    }
+    case 'quiet': {
+      const quiet = command.value ?? (isQuiet(session) ? 'off' : 'on')
+      const isNowQuiet = isQuietOf({ ...session.config, quiet }, session.isInEditor)
+
+      return withOverride(
+        session,
+        { quiet },
+        quiet === 'auto'
+          ? `tokensaver quiet is auto: ${isNowQuiet ? 'on, in this editor' : 'off, outside an editor'}`
+          : `tokensaver quiet is ${quiet}${quiet === 'on' ? ': no pop-ups, no glyph art, the strip only when you can act' : ''}`,
       )
     }
     case 'reset':

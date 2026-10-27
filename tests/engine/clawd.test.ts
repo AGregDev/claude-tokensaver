@@ -10,12 +10,17 @@ const NOISY = Array.from({ length: 400 }, (_, index) =>
   index % 50 === 0 ? `\u001b[33mwarn\u001b[0m step ${String(index)}` : 'npm WARN deprecated left-pad@1.0.0',
 ).join('\n')
 
-type World = { toasts: string[]; compacts: (string | undefined)[]; clock: MockClock; saved: Map<string, unknown> }
+type World = { toasts: string[]; logs: string[]; compacts: (string | undefined)[]; clock: MockClock; saved: Map<string, unknown> }
 
-const world = (on: On): World => {
-  const seen: World = { toasts: [], compacts: [], clock: mock.clock(on), saved: new Map() }
+const world = (on: On, env: Record<string, string> = {}): World => {
+  const seen: World = { toasts: [], logs: [], compacts: [], clock: mock.clock(on), saved: new Map() }
 
-  mock.env(on, {})
+  mock.env(on, env)
+  on('ui.log', (_$, e) => {
+    seen.logs.push(e.text)
+
+    return { value: undefined }
+  })
   on('store.get', (_$, e) => ({ value: seen.saved.get(e.key) }))
   on('store.set', (_$, e) => {
     seen.saved.set(e.key, e.value)
@@ -135,6 +140,43 @@ test('tidies a pasted log in a prompt, losslessly, and says so', async ($, on) =
   expect((entered.text ?? '').startsWith('why does the install fail?')).toBe(true)
   expect((entered.text ?? '').length).toBeLessThan(pasted.length / 4)
   expect(seen.toasts.some(toast => toast.startsWith('Clawd: Tidied your pasted log'))).toBe(true)
+})
+
+test('keeps quiet inside VS Code: the log, not toasts, and no glyph art', async ($, on) => {
+  const seen = world(on, { TERM_PROGRAM: 'vscode' })
+
+  await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' })
+
+  await $.prompt.submit({ text: `why does the install fail?
+${NOISY}`, wait: false, origin: { kind: 'composer' } })
+  await toolResult($, 'Bash', NOISY)
+  await measure($, 150_000)
+
+  expect(seen.toasts).toEqual([])
+  expect(seen.logs.some(log => log.startsWith('Clawd: Tidied your pasted log'))).toBe(true)
+  expect(seen.logs.some(log => log.includes('Context at 75%'))).toBe(true)
+
+  const row = await $.ui.mount({
+    plugin: 'tokensaver',
+    component: 'ToolUse',
+    surface: 'terminal',
+    props: { tool_use_id: 'tool-1', tool: 'Bash', input: {}, isRunning: false, isErrored: false, isInterrupted: false },
+  })
+
+  expect(await row.find({ type: 'Text', text: /tokensaver trimmed .* tokens of noise/ })).toBeDefined()
+  expect(await row.find({ type: 'Text', text: /▐▛█▜▌/ })).toBeUndefined()
+
+  // The strip still offers to compact: that is something the person can act on.
+  const band = await $.ui.mount({
+    plugin: 'tokensaver',
+    component: 'AbovePrompt',
+    surface: 'terminal',
+    viewport: { columns: 100, rows: 30 },
+    props: { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 80, scroll: { offset: 0, bodyRows: 4 }, view: {} },
+  })
+
+  expect((await band.find({ key: 'band-compact' }))?.props['label']).toBe('Compact now')
+  expect(await band.find({ type: 'Text', text: /▐/ })).toBeUndefined()
 })
 
 test('warns as the context fills, and the band offers to compact', async ($, on) => {

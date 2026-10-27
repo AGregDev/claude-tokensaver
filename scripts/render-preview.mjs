@@ -28,6 +28,7 @@ const view = overrides => ({
   mode: 'on',
   hasMotion: true,
   hasColor: true,
+  isQuiet: false,
   context: { tokens: 84_000, window: 200_000, percent: 42 },
   ghost: 23_000,
   stats: { eaten: 31_200, reReads: 412_000, compactFreed: 138_000, routed: 9100, keptOut: 4000, trims: 17, compactions: 1 },

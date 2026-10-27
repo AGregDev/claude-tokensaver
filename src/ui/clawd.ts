@@ -14,6 +14,8 @@ export type ClawdView = {
   mode: 'on' | 'off' | 'dry-run'
   hasMotion: boolean
   hasColor: boolean
+  /** No glyph art and no passing moods: plain words, shown only when the person can act. */
+  isQuiet: boolean
   context: { tokens: number; window: number; percent: number }
   /** Tokens Clawd cut that would otherwise sit in the context right now. */
   ghost: number
@@ -426,8 +428,33 @@ const moodTone = (mood: Mood): Tone => {
   }
 }
 
-/** The strip above the prompt, in the terminal: one line. */
+/**
+ * Whether the strip above the prompt shows, and whether it offers to compact.
+ * Quiet, it shows only for the offer: no passing mood, helper band or flash.
+ */
+export const stripOf = (
+  view: ClawdView,
+  input: { isFlaring: boolean; hasAgents: boolean; hasFlash: boolean },
+): { isVisible: boolean; shouldOffer: boolean } => {
+  const shouldOffer = view.mood === 'sleepy' || (view.mood === 'worried' && view.context.percent >= 70)
+  const isLively = !view.isQuiet && (input.isFlaring || input.hasAgents || input.hasFlash)
+
+  return { isVisible: view.mode !== 'off' && (shouldOffer || isLively), shouldOffer }
+}
+
+/** The strip above the prompt, in the terminal: one line. Quiet, no glyph face. */
 export const bandLineOf = (view: ClawdView, columns: number): Line => {
+  if (view.isQuiet) {
+    const label = 'tokensaver '
+    const meter = view.context.window > 0 ? ` (${String(view.context.percent)}%)` : ''
+
+    return [
+      { text: label, isDim: true },
+      { text: fit(view.speech, Math.max(10, columns - label.length - meter.length - 1)), ...toneOf(view, moodTone(view.mood)) },
+      { text: meter, isDim: true },
+    ]
+  }
+
   const face = view.mood === 'sleepy' ? '▐▄█▄▌' : view.mood === 'chomp' ? '▐▛▀▜▌' : '▐▛█▜▌'
   const trail = view.mood === 'chomp' && view.hasMotion ? ` ${CHOMP_TRAIL[view.frame % CHOMP_TRAIL.length] ?? ''}` : ''
   const meter =

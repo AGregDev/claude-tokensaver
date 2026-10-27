@@ -44,6 +44,17 @@
       "description": "Show the compact token meter under the prompt.",
       "default": true
     },
+    "quiet": {
+      "type": "string",
+      "title": "Quiet",
+      "description": "No pop-ups, no glyph art, and the strip above the prompt only when you can act on it. auto: quiet inside VS Code and Cursor, lively elsewhere.",
+      "options": [
+        "auto",
+        "on",
+        "off"
+      ],
+      "default": "auto"
+    },
     "reducedMotion": {
       "type": "boolean",
       "title": "Reduced motion",

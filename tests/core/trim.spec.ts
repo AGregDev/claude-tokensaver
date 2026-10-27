@@ -45,6 +45,47 @@ describe('trimOutput', () => {
     expect(trimOutput(text, { level: 'lossless', maxLines: 10_000 }).text).not.toContain('more lines like these')
   })
 
+  it('drops finished progress-bar lines under the full level only, and keeps bare rules', () => {
+    const bar = '     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 13.0/13.0 kB 1.1 MB/s eta 0:00:00'
+    const text = lines(40, index => (index % 2 === 0 ? `Fetched archive number ${String(index)} of the set` : bar))
+    const full = trimOutput(`${text}
+--------------------
+[==========] 100%? no: ok`, { level: 'full', maxLines: 10_000 })
+
+    expect(full.text).not.toContain('━━━━')
+    expect(full.text).toContain('--------------------')
+    expect(full.actions).toContain('progress')
+    expect(trimOutput(text, { level: 'lossless', maxLines: 10_000 }).text).toContain('━━━━')
+  })
+
+  it('folds repeating groups of look-alike lines to the first and last group', () => {
+    const text = lines(30, index => `Step ${String(index)}/30 : RUN make step-${String(index)}
+ ---> Running in ${String(index)}a1b2c3d4e5`)
+    const result = trimOutput(text, { level: 'full', maxLines: 10_000 }).text
+
+    expect(result).toContain('Step 0/30 : RUN make step-0')
+    expect(result).toContain(' ---> Running in 29a1b2c3d4e5')
+    expect(result).toContain('[… 28 more groups of 2 lines like these]')
+    expect(trimOutput(text, { level: 'lossless', maxLines: 10_000 }).text).toContain('Step 15/30')
+  })
+
+  it('never folds groups around warning lines', () => {
+    const text = lines(20, index => `warn step ${String(index)}
+npm notice fetched left-pad ${String(index)}
+compiled module ${String(index)}`)
+
+    expect(trimOutput(text, { level: 'full', maxLines: 10_000 }).text).toContain('warn step 10')
+  })
+
+  it('never folds a group that holds an error line', () => {
+    const text = lines(30, index =>
+      `step ${String(index)} started on worker ${String(index % 4)}
+${index === 17 ? 'step 17 failed: exit code 2' : `step ${String(index)} finished in ${String(index)}ms`}`,
+    )
+
+    expect(trimOutput(text, { level: 'full', maxLines: 10_000 }).text).toContain('step 17 failed: exit code 2')
+  })
+
   it('never folds error lines', () => {
     const text = lines(80, index => `error[E0${String(100 + index)}]: mismatched types in file_${String(index)}.rs`)
 

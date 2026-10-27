@@ -117,7 +117,29 @@ const gitDiffStat = (): Fixture => {
   return { name: 'git diff --stat (clean)', text: lines.join('\n'), mustKeep: lines }
 }
 
-export const FIXTURES: readonly (() => Fixture)[] = [npmInstall, jest, cargo, dockerBuild, serverLog, gitDiffStat]
+const pipInstall = (): Fixture => {
+  const lines = [
+    ...range(60).flatMap(index => [
+      `Collecting package-${String(index)}>=1.0`,
+      `  Downloading package_${String(index)}-1.${String(index)}.0-py3-none-any.whl (${String(index * 13)} kB)`,
+      `     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ${String(index * 13)}.0/${String(index * 13)}.0 kB ${String(index)}.1 MB/s eta 0:00:00`,
+    ]),
+    "ERROR: pip's dependency resolver does not currently take into account all the packages that are installed.",
+    'Installing collected packages: package-0, package-1, package-2',
+    'Successfully installed package-0-1.0.0 package-1-1.1.0 package-2-1.2.0',
+  ]
+
+  return {
+    name: 'pip install',
+    text: lines.join('\n'),
+    mustKeep: [
+      "ERROR: pip's dependency resolver does not currently take into account all the packages that are installed.",
+      'Successfully installed package-0-1.0.0 package-1-1.1.0 package-2-1.2.0',
+    ],
+  }
+}
+
+export const FIXTURES: readonly (() => Fixture)[] = [npmInstall, jest, cargo, dockerBuild, pipInstall, serverLog, gitDiffStat]
 
 /** A big output for timing: about a megabyte of mixed noise. */
 export const bigOutput = (): string => {
