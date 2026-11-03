@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1
+
+- The `/tokensaver:*` command files can no longer be invoked by Claude as skills. Under `claude -p`, Claude used to pick one up and wrongly report that the mod was not loaded.
+- README: under `claude -p` and the SDK, use the `/tokensaver:doctor` form of a command.
+- Checked live: with the voice on, one sample answer used 293 output tokens instead of 523 (44% fewer).
+
 ## 0.5.0
 
 - **The caveman voice, built in.** Claude answers first, without ceremony or filler, and keeps every code span, path, number and error exact. The rules are adapted from [Caveman](https://github.com/juliusbrussee/caveman) by Julius Brussee (Apache-2.0) and ride in the system prompt after the cache boundary. On by default; `/tokensaver caveman on|ultra|off`, the pane's **Caveman** button, the `caveman` option, or a prompt that is just `stop caveman` / `normal mode` / `caveman ultra` switches it.
