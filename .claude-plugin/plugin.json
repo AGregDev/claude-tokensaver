@@ -1,7 +1,7 @@
 {
   "name": "tokensaver",
-  "version": "0.4.0",
-  "description": "Clawd, a token-saving assistant: trims noisy tool output and pasted logs before they fill your context, tells you when to compact (and does it in one click), warns when the prompt cache goes cold, and routes sub-agents to cheaper models.",
+  "version": "0.5.0",
+  "description": "Clawd, a token-saving assistant: has Claude answer in the caveman voice (fewer words, every fact kept), trims noisy tool output and pasted logs before they fill your context, tells you when to compact (and does it in one click), warns when the prompt cache goes cold, and routes sub-agents to cheaper models.",
   "author": {
     "name": "AGregDev",
     "url": "https://github.com/AGregDev"
@@ -12,6 +12,7 @@
   "keywords": [
     "mods",
     "token-efficiency",
+    "caveman",
     "context",
     "compaction",
     "mascot",
@@ -60,6 +61,17 @@
       "title": "Reduced motion",
       "description": "Turn off the spinner and the counting animation.",
       "default": false
+    },
+    "caveman": {
+      "type": "string",
+      "title": "Caveman voice",
+      "description": "on: Claude answers in fewer words with every technical fact, code span and error kept (rules from Caveman by Julius Brussee). ultra: fragments only. off: Claude's normal voice. Sub-agent reports and compaction summaries follow it too.",
+      "options": [
+        "on",
+        "ultra",
+        "off"
+      ],
+      "default": "on"
     },
     "trimOutput": {
       "type": "boolean",

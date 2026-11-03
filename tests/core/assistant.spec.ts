@@ -98,7 +98,7 @@ describe('assistant', () => {
 
   it('falls asleep on a cold cache and wakes on the next prompt', () => {
     const measured = onContext(base, { tokens: 90_000, window: 200_000, isEnabled: true, now: 0 }).assistant
-    const ended = onTurnEnd(measured, 0)
+    const ended = onTurnEnd(measured, { now: 0, output: undefined, isFinished: false, isTerse: true })
     const cold = onIdleCheck(ended, { now: 6 * 60_000, isEnabled: true })
 
     expect(cold.isCold).toBe(true)

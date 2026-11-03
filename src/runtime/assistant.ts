@@ -20,6 +20,8 @@ import type { GuardLevel } from '../core/guardian.ts'
 import { ACTION_WORDS, isInspecting, looksLikeLog, trimOutput } from '../core/trim.ts'
 import type { TrimLevel } from '../core/trim.ts'
 import { isRecord } from '../core/log.ts'
+import { addReply, EMPTY_VOICE_STATS, parseVoice, voiceLine, voiceSwitchOf } from '../core/caveman.ts'
+import type { Voice, VoiceStats } from '../core/caveman.ts'
 
 export type AssistantConfig = {
   isTrimming: boolean
@@ -30,6 +32,8 @@ export type AssistantConfig = {
   autoCompactAt: number
   /** How long the prompt cache lives, in minutes; 0 turns the cold-cache coach off. */
   cacheTtlMinutes: number
+  /** How Claude talks: the caveman voice, its ultra form, or Claude's own. */
+  voice: Voice
 }
 
 export const DEFAULT_ASSISTANT: AssistantConfig = {
@@ -39,6 +43,7 @@ export const DEFAULT_ASSISTANT: AssistantConfig = {
   isTrimmingPastes: true,
   autoCompactAt: 0,
   cacheTtlMinutes: 5,
+  voice: 'caveman',
 }
 
 /** The tools whose output the trimmer may shrink: shells and their background output, never file reads. */
@@ -74,6 +79,8 @@ export type Assistant = {
   /** A passing mood (chomping, cheering) and when it ends. */
   flare: { mood: Mood; until: number; text: string } | undefined
   prompts: readonly string[]
+  /** This session's finished main-loop replies, by voice. */
+  replies: VoiceStats
 }
 
 export type AssistantEffect =
@@ -110,9 +117,10 @@ export const parseAssistantOptions = (options: Readonly<Record<string, unknown>>
   isTrimmingPastes: flag(options['trimPastes'], DEFAULT_ASSISTANT.isTrimmingPastes),
   autoCompactAt: number(options['autoCompactAt'], DEFAULT_ASSISTANT.autoCompactAt, 0, 95),
   cacheTtlMinutes: number(options['cacheTtlMinutes'], DEFAULT_ASSISTANT.cacheTtlMinutes, 0, 120),
+  voice: parseVoice(options['caveman']) ?? DEFAULT_ASSISTANT.voice,
 })
 
-export type AssistantOverrides = Partial<Pick<AssistantConfig, 'isTrimming' | 'isTrimmingPastes' | 'autoCompactAt'>>
+export type AssistantOverrides = Partial<Pick<AssistantConfig, 'isTrimming' | 'isTrimmingPastes' | 'autoCompactAt' | 'voice'>>
 
 export const parseAssistantOverrides = (value: unknown): AssistantOverrides => {
   if (!isRecord(value)) {
@@ -120,11 +128,13 @@ export const parseAssistantOverrides = (value: unknown): AssistantOverrides => {
   }
 
   const { isTrimming, isTrimmingPastes, autoCompactAt } = value
+  const voice = parseVoice(value['voice'])
 
   return {
     ...(typeof isTrimming === 'boolean' ? { isTrimming } : {}),
     ...(typeof isTrimmingPastes === 'boolean' ? { isTrimmingPastes } : {}),
     ...(typeof autoCompactAt === 'number' ? { autoCompactAt: number(autoCompactAt, 0, 0, 95) } : {}),
+    ...(voice === undefined ? {} : { voice }),
   }
 }
 
@@ -147,6 +157,7 @@ export const createAssistant = (config: AssistantConfig): Assistant => ({
   feed: [],
   flare: undefined,
   prompts: [],
+  replies: EMPTY_VOICE_STATS,
 })
 
 const withFeed = (assistant: Assistant, item: FeedItem): Assistant => ({
@@ -244,19 +255,44 @@ export const onToolOutput = (
   )
 }
 
+/** Switches the voice Claude answers in, from the next reply; says so. */
+export const setVoice = (assistant: Assistant, voice: Voice, now: number): AssistantStep<{ text: string }> => {
+  const text = voiceLine(voice)
+
+  return {
+    assistant: withFlare(
+      withFeed(withAssistantConfig(assistant, { ...assistant.config, voice }), { at: now, kind: 'info', text, tokens: 0 }),
+      'happy',
+      text,
+      now,
+    ),
+    effects: [{ kind: 'save-assistant' }],
+    reply: { text },
+  }
+}
+
 /**
  * A prompt the person typed: remembers it for compaction instructions, wakes
  * Clawd, and cleans a pasted log in it, losslessly. Prose is never touched.
+ * A prompt that is only a voice switch ("stop caveman") switches the voice
+ * and still reaches Claude, which confirms it.
  */
 export const onPromptText = (
   assistant: Assistant,
   input: { text: string; isFromUser: boolean; isEnabled: boolean; isDryRun: boolean; now: number },
-): AssistantStep<{ text: string | undefined }> => {
+): AssistantStep<{ text: string | undefined; voice: Voice | undefined }> => {
   const woken: Assistant = {
     ...assistant,
     isTurnRunning: true,
     isCold: false,
     prompts: input.isFromUser ? [...assistant.prompts, input.text].slice(-MAX_PROMPTS) : assistant.prompts,
+  }
+  const voice = input.isFromUser && input.isEnabled ? voiceSwitchOf(input.text) : undefined
+
+  if (voice !== undefined) {
+    const step = setVoice(woken, voice, input.now)
+
+    return { ...step, reply: { text: undefined, voice } }
   }
 
   if (
@@ -266,14 +302,14 @@ export const onPromptText = (
     !assistant.config.isTrimmingPastes ||
     !looksLikeLog(input.text)
   ) {
-    return still(woken, { text: undefined })
+    return still(woken, { text: undefined, voice: undefined })
   }
 
   const result = trimOutput(input.text, { level: 'lossless', maxLines: Number.MAX_SAFE_INTEGER })
   const cut = result.beforeTokens - result.afterTokens
 
   if (result.actions.length === 0) {
-    return still(woken, { text: undefined })
+    return still(woken, { text: undefined, voice: undefined })
   }
 
   const text = `Tidied your pasted log: −${formatTokens(cut)} tokens (${listOf(result.actions.map(action => ACTION_WORDS[action]))})`
@@ -294,7 +330,7 @@ export const onPromptText = (
       input.now,
     ),
     effects: [{ kind: 'toast', text: `Clawd: ${text}` }],
-    reply: { text: result.text },
+    reply: { text: result.text, voice: undefined },
   }
 }
 
@@ -304,10 +340,21 @@ export const onMainRequest = (assistant: Assistant): Assistant => ({
   reReads: assistant.reReads + assistant.live,
 })
 
-export const onTurnEnd = (assistant: Assistant, now: number): Assistant => ({
+/**
+ * The main loop's turn ended. A reply that finished is tallied under the voice
+ * it was written in, so the voice's effect can be measured, not assumed.
+ */
+export const onTurnEnd = (
+  assistant: Assistant,
+  input: { now: number; output: number | undefined; isFinished: boolean; isTerse: boolean },
+): Assistant => ({
   ...assistant,
   isTurnRunning: false,
-  lastTurnEndAt: now,
+  lastTurnEndAt: input.now,
+  replies:
+    input.isFinished && input.output !== undefined
+      ? addReply(assistant.replies, { isTerse: input.isTerse, output: input.output })
+      : assistant.replies,
 })
 
 export const fillOf = (assistant: Assistant): number =>
@@ -520,6 +567,8 @@ export const speechOf = (
     case 'idle':
       return assistant.trimmed > 0
         ? `${formatTokens(assistant.trimmed + assistant.pasteTrimmed)} tokens eaten so far, ~${formatTokens(assistant.reReads)} re-sends avoided.`
-        : 'Hi! I trim noisy output before it fills your context, and tell you when to compact.'
+        : assistant.config.voice === 'off'
+          ? 'Hi! I trim noisy output before it fills your context, and tell you when to compact.'
+          : "Hi! I trim noisy output, keep Claude's replies caveman-short, and tell you when to compact."
   }
 }

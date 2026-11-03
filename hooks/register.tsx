@@ -14,6 +14,19 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer, ToolCallResult, TurnUsage } from 'claude-code'
 
+import {
+  addReply,
+  averageReply,
+  parseVoice,
+  parseVoiceStats,
+  VOICE_SECTION_ID,
+  voiceComparison,
+  voiceNote,
+  voiceRules,
+  withReportNote,
+  withTerseSummary,
+} from '../src/core/caveman.ts'
+import type { Voice, VoiceStats } from '../src/core/caveman.ts'
 import { isRecord } from '../src/core/log.ts'
 import {
   createAssistant,
@@ -31,10 +44,11 @@ import {
   parseAssistantOptions,
   parseAssistantOverrides,
   requestCompact,
+  setVoice,
   speechOf,
   withAssistantConfig,
 } from '../src/runtime/assistant.ts'
-import type { Assistant, AssistantOverrides, AssistantStep } from '../src/runtime/assistant.ts'
+import type { Assistant, AssistantOverrides, AssistantStep, FeedKind } from '../src/runtime/assistant.ts'
 import {
   hydrate,
   isAnimating,
@@ -103,6 +117,18 @@ const CELL_PX = 7.4
 
 const revision = atom({ plugin: 'tokensaver', key: 'revision' } as const, 0)
 
+/** The mark each kind of activity gets in the pane's feed. */
+const FEED_GLYPHS: Readonly<Record<FeedKind, string>> = {
+  trim: '✂',
+  paste: '✂',
+  compact: '⇣',
+  cold: '❄',
+  warn: '▲',
+  route: '•',
+  escalate: '•',
+  info: '•',
+}
+
 type TextStyle = { color?: Tone; weight?: 'semibold'; dimColor?: true }
 
 /** A colour prop only where colour is on. */
@@ -165,11 +191,12 @@ const resultText = (block: Record<string, unknown>): string | undefined => {
   return texts.every(text => typeof text === 'string') ? texts.join('\n') : undefined
 }
 
-type Lifetime = { eaten: number; freed: number }
+type Lifetime = { eaten: number; freed: number; voice: VoiceStats }
 
 const parseLifetime = (value: unknown): Lifetime => ({
   eaten: isRecord(value) && typeof value['eaten'] === 'number' ? value['eaten'] : 0,
   freed: isRecord(value) && typeof value['freed'] === 'number' ? value['freed'] : 0,
+  voice: parseVoiceStats(isRecord(value) ? value['voice'] : undefined),
 })
 
 // Module state: a session's worth of bookkeeping. A reload starts it over, and
@@ -183,7 +210,7 @@ let session: Session = hydrate({
 }).session
 let assistant: Assistant = createAssistant(parseAssistantOptions({}))
 let assistantOverrides: AssistantOverrides = {}
-let lifetime: Lifetime = { eaten: 0, freed: 0 }
+let lifetime: Lifetime = parseLifetime(undefined)
 let timer: Timer | undefined
 let idleTimer: Timer | undefined
 let shownStatus: string | undefined
@@ -193,6 +220,8 @@ let wasPaneClosedByPerson = false
 let markedRows = new Map<string, number>()
 /** The command each shell call ran, by tool_use_id, so the trimmer knows a search from a build. */
 let commands = new Map<string, string>()
+/** System prompts sent with the caveman voice in them since the module loaded, for `/tokensaver doctor`. */
+let voicedPrompts = 0
 
 const clawdView = (now = Date.now()): ClawdView => {
   const view = toView(session)
@@ -222,6 +251,32 @@ const clawdView = (now = Date.now()): ClawdView => {
   }
 }
 
+/** The voice Claude is told to answer in now: the switch, unless tokensaver is off. */
+const voiceNow = (): Voice => (session.config.isEnabled ? assistant.config.voice : 'off')
+
+const VOICE_NAMES: Readonly<Record<Voice, string>> = { off: 'off', caveman: 'on', ultra: 'ultra' }
+
+/** What the pane's voice button switches to: on, then ultra, then off. */
+const NEXT_VOICE: Readonly<Record<Voice, Voice>> = { caveman: 'ultra', ultra: 'off', off: 'caveman' }
+
+/** What the voice has measurably done, all-time: average output per reply, with it and without. */
+const voiceReport = (): string => {
+  const comparison = voiceComparison(lifetime.voice)
+  const voice = `caveman voice ${VOICE_NAMES[assistant.config.voice]}`
+
+  if (comparison !== undefined) {
+    const change = comparison.cut >= 0 ? `${String(comparison.cut)}% fewer` : `${String(-comparison.cut)}% more`
+
+    return `${voice}: replies average ${formatTokens(comparison.terse)} output tokens with it, ${formatTokens(comparison.plain)} without (${change}, over ${String(lifetime.voice.terse.turns + lifetime.voice.plain.turns)} replies)`
+  }
+
+  const tally = assistant.config.voice === 'off' ? lifetime.voice.plain : lifetime.voice.terse
+
+  return tally.turns === 0
+    ? voice
+    : `${voice}: replies average ${formatTokens(averageReply(tally))} output tokens over ${String(tally.turns)}; the comparison shows once each voice has 5`
+}
+
 /** The status line: one glance at what Clawd is doing for the session. Plain text, no colour codes. */
 const statusText = (): string | undefined => {
   if (!session.config.isEnabled || !session.config.hasStatusLine) {
@@ -239,6 +294,10 @@ const statusText = (): string | undefined => {
 
   if (view.context.window > 0) {
     parts.push(`ctx ${bar(view.context.percent / 100, 6)} ${String(view.context.percent)}%`)
+  }
+
+  if (voiceNow() !== 'off') {
+    parts.push(voiceNow() === 'ultra' ? 'caveman ultra' : 'caveman')
   }
 
   if (view.mood === 'sleepy') {
@@ -542,6 +601,7 @@ const ASSISTANT_HELP = [
   '/tokensaver trim [on|off]       trim noisy shell output before it is stored',
   '/tokensaver pastes [on|off]     tidy pasted logs in your prompts (lossless)',
   '/tokensaver autocompact <0-95>  compact by itself past this fill % (0 = never)',
+  '/tokensaver caveman [on|ultra|off]  Claude answers in fewer words, every fact kept',
 ].join('\n')
 
 const switchOf = (word: string | undefined, isOn: boolean): boolean =>
@@ -594,6 +654,22 @@ const assistantCommand = async ($: EngineInterface, args: string): Promise<strin
 
       return `Clawd: paste tidying is ${isTrimmingPastes ? 'on' : 'off'}`
     }
+    case 'caveman':
+    case 'voice': {
+      const asked = parseVoice(second)
+
+      if (second !== undefined && asked === undefined) {
+        return 'Clawd: say on, ultra or off, e.g. /tokensaver caveman ultra'
+      }
+
+      const voice = asked ?? (assistant.config.voice === 'off' ? 'caveman' : 'off')
+
+      assistantOverrides = { ...assistantOverrides, voice }
+
+      const { text } = await commitAssistant($, setVoice(assistant, voice, Date.now()))
+
+      return session.config.isEnabled ? `Clawd: ${text}` : `Clawd: ${text} (tokensaver is off: /tokensaver on)`
+    }
     case 'autocompact': {
       const value = Number(second)
 
@@ -627,6 +703,7 @@ const assistantReport = (): string => {
     `~${formatTokens(view.stats.reReads)} tokens not re-sent on later requests; ${formatTokens(view.stats.compactFreed)} freed by ${String(view.stats.compactions)} compaction(s)`,
     `context ${view.context.window > 0 ? `${String(view.context.percent)}% (${formatTokens(view.context.tokens)} of ${formatTokens(view.context.window)})` : 'not measured yet'}`,
     `trim ${assistant.config.isTrimming ? `on (${assistant.config.trimLevel}, cap ${String(assistant.config.maxOutputLines)} lines)` : 'off'} · pastes ${assistant.config.isTrimmingPastes ? 'on' : 'off'} · auto-compact ${assistant.config.autoCompactAt === 0 ? 'off' : `at ${String(assistant.config.autoCompactAt)}%`} · cache coach ${assistant.config.cacheTtlMinutes === 0 ? 'off' : `${String(assistant.config.cacheTtlMinutes)} min`}`,
+    voiceReport(),
   ].join('\n')
 }
 
@@ -643,6 +720,15 @@ const runCommand = async ($: EngineInterface, args: string): Promise<string> => 
 
   if (word === '' || word === 'status') {
     return `${assistantReport()}\n${reply.text}`
+  }
+
+  if (word === 'doctor') {
+    const voice = voiceNow()
+    const where = voice === 'off'
+      ? session.config.isEnabled ? 'off' : 'off (tokensaver is off)'
+      : `${VOICE_NAMES[voice]}, in ${String(voicedPrompts)} system prompt(s) sent since load (section ${VOICE_SECTION_ID})`
+
+    return `${reply.text}\ncaveman voice: ${where}`
   }
 
   return word === 'help' ? `${ASSISTANT_HELP}\n${reply.text}` : reply.text
@@ -667,6 +753,7 @@ export const register: Register = (on, options) => {
   assistantOverrides = {}
   markedRows = new Map()
   commands = new Map()
+  voicedPrompts = 0
   isPaneOpen = false
   wasPaneClosedByPerson = false
 
@@ -705,8 +792,8 @@ export const register: Register = (on, options) => {
       () =>
         $.command.register({
           name: 'tokensaver',
-          description: 'Clawd, your token saver: status, compact, trim, on/off, dashboard, doctor',
-          argumentHint: '[compact|trim|pastes|autocompact|on|off|dry-run|dashboard|doctor|motion|quiet|export|reset|help]',
+          description: 'Clawd, your token saver: status, compact, caveman, trim, on/off, dashboard, doctor',
+          argumentHint: '[compact|caveman|trim|pastes|autocompact|on|off|dry-run|dashboard|doctor|motion|quiet|export|reset|help]',
           immediate: true,
         }),
       undefined,
@@ -763,6 +850,7 @@ export const register: Register = (on, options) => {
         'tokensaver:help',
         'tokensaver:compact',
         'tokensaver:trim',
+        'tokensaver:caveman',
       ],
     },
     async ($, e) => ({ text: await runCommand($, `${e.command.slice('tokensaver:'.length)} ${e.args}`) }),
@@ -792,6 +880,12 @@ export const register: Register = (on, options) => {
         now: Date.now(),
       }),
     )
+    if (tidied.voice !== undefined) {
+      assistantOverrides = { ...assistantOverrides, voice: tidied.voice }
+      // The transition saved the overrides before they held the new voice.
+      void attempt(() => $.store.set(STORE_ASSISTANT, assistantOverrides), undefined)
+    }
+
     const text = tidied.text ?? e.text
     const reply = await commit($, onPrompt(session, { text, isFromUser, now: Date.now() }))
     const passed = tidied.text === undefined ? e : { ...e, text }
@@ -801,9 +895,12 @@ export const register: Register = (on, options) => {
       void saveLifetime($)
     }
 
-    return reply.context === undefined
-      ? next(passed)
-      : next({ ...passed, context: [...(passed.context ?? []), reply.context] })
+    const added = [
+      ...(tidied.voice === undefined ? [] : [voiceNote(tidied.voice)]),
+      ...(reply.context === undefined ? [] : [reply.context]),
+    ]
+
+    return added.length === 0 ? next(passed) : next({ ...passed, context: [...(passed.context ?? []), ...added] })
   }).catch((_$, e, next) => next(e))
 
   // The output trimmer: a shell's result is shrunk before it is stored, so the
@@ -884,7 +981,9 @@ export const register: Register = (on, options) => {
   }).catch((_$, e, next) => next(e))
 
   on('session.compact', async ($, e, next) => {
-    const result = await next(e)
+    // While the voice is on, the main conversation's summary is written in it too: it is re-sent with every request after.
+    const isTerse = e.agentId === undefined && voiceNow() !== 'off'
+    const result = await next(isTerse ? { ...e, instructions: withTerseSummary(e.instructions) } : e)
 
     // The main conversation's own compactions, whoever asked; Clawd's own calls book theirs.
     if (e.agentId === undefined && e.trigger !== 'precompute' && e.trigger !== 'plugin') {
@@ -927,7 +1026,12 @@ export const register: Register = (on, options) => {
         now: Date.now(),
       }),
     )
-    const started = await next(reply.model === undefined ? e : { ...e, model: reply.model })
+    // A sub-agent's report lands in the main context: under the voice it is asked to be terse.
+    // A fork reads the parent's own prompt, and a teammate's or a workflow's task is not ours to add to.
+    const isTerse = voiceNow() !== 'off' && !e.fork && e.isTeammate !== true && e.workflow === undefined
+    const prompt = isTerse ? withReportNote(e.prompt) : e.prompt
+    const asked = reply.model === undefined ? e : { ...e, model: reply.model }
+    const started = await next(prompt === e.prompt ? asked : { ...asked, prompt })
 
     await commit(
       $,
@@ -982,7 +1086,17 @@ export const register: Register = (on, options) => {
 
   on('turn.complete', async ($, e, next) => {
     if (e.agentId === undefined) {
-      assistant = onTurnEnd(assistant, Date.now())
+      const output = e.usage?.output_tokens
+      const isFinished = e.reason === 'answer' && !e.isAborted
+      const isTerse = voiceNow() !== 'off'
+
+      assistant = onTurnEnd(assistant, { now: Date.now(), output, isFinished, isTerse })
+
+      if (isFinished && output !== undefined && output > 0) {
+        lifetime = { ...lifetime, voice: addReply(lifetime.voice, { isTerse, output }) }
+        void saveLifetime($)
+      }
+
       armIdleCheck($)
     }
 
@@ -1015,6 +1129,24 @@ export const register: Register = (on, options) => {
     )
 
     return next(e)
+  }).catch((_$, e, next) => next(e))
+
+  // The caveman voice rides in the system prompt, after the cache boundary, so the shared
+  // prefix stays cached. Switching it re-writes the rest of the cache once, on the next request.
+  on('prompt.compose', async (_$, e, next) => {
+    const composed = await next(e)
+    const rules = voiceRules(voiceNow())
+
+    if (rules === undefined || e.traits.includes('bare') || composed.sections.some(section => section.id === VOICE_SECTION_ID)) {
+      return composed
+    }
+
+    // A render that only measures the prompt (`/context`) carries the section but is not sent.
+    if (!e.traits.includes('analysis')) {
+      voicedPrompts += 1
+    }
+
+    return { sections: [...composed.sections, { id: VOICE_SECTION_ID, text: rules, scope: 'session' as const }] }
   }).catch((_$, e, next) => next(e))
 
   // --- Drawing ---------------------------------------------------------------
@@ -1156,6 +1288,11 @@ export const register: Register = (on, options) => {
       <Box gap={1} flexWrap="wrap">
         <Button key="compact" variant="primary" label="Compact now" onPress={press($, 'compact')} />
         <Button
+          key="caveman"
+          label={`Caveman: ${VOICE_NAMES[assistant.config.voice]}`}
+          onPress={press($, `caveman ${NEXT_VOICE[assistant.config.voice]}`)}
+        />
+        <Button
           key="trim"
           label={assistant.config.isTrimming ? 'Trimming: on' : 'Trimming: off'}
           onPress={press($, 'trim')}
@@ -1189,7 +1326,7 @@ export const register: Register = (on, options) => {
             feed.map(item => (
               <Box gap={1}>
                 <Text {...tint(view.hasColor, (item.kind === 'warn' ? 'warning' : item.kind === 'escalate' ? 'error' : 'success'))}>
-                  {item.kind === 'trim' || item.kind === 'paste' ? '✂' : item.kind === 'compact' ? '⇣' : item.kind === 'cold' ? '❄' : item.kind === 'warn' ? '▲' : '•'}
+                  {FEED_GLYPHS[item.kind]}
                 </Text>
                 <Text>{item.text}</Text>
                 <Text dimColor>{ago(item.at)}</Text>
@@ -1199,6 +1336,7 @@ export const register: Register = (on, options) => {
           <Text dimColor>
             {`All-time: ${formatTokens(lifetime.eaten)} eaten · ${formatTokens(lifetime.freed)} freed by compacting`}
           </Text>
+          <Text dimColor>{voiceReport()}</Text>
         </Box>
       )
     }
@@ -1236,6 +1374,7 @@ export const register: Register = (on, options) => {
           <Text {...tint(view.hasColor, 'warning')} weight="semibold">{formatTokens(view.stats.routed + view.stats.keptOut)}</Text>
           <Text dimColor> routing</Text>
         </Text>
+        <Text dimColor>{voiceReport()}</Text>
         <Text> </Text>
         {controls}
         <Text> </Text>
@@ -1243,7 +1382,7 @@ export const register: Register = (on, options) => {
         {feed.length === 0 ? (
           <Text dimColor>Nothing yet.</Text>
         ) : (
-          feed.map(item => <Text>{`${item.kind === 'warn' ? '▲' : item.kind === 'cold' ? '❄' : item.kind === 'compact' ? '⇣' : '✂'} ${item.text}  ${ago(item.at)}`}</Text>)
+          feed.map(item => <Text>{`${FEED_GLYPHS[item.kind]} ${item.text}  ${ago(item.at)}`}</Text>)
         )}
       </Box>
     )

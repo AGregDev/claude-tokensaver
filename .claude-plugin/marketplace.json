@@ -1,12 +1,12 @@
 {
   "name": "claude-tokensaver",
-  "description": "The tokensaver mod for Claude Code: Clawd, a token-saving assistant that trims noisy output, guards the context window and routes sub-agents to cheaper models.",
+  "description": "The tokensaver mod for Claude Code: Clawd, a token-saving assistant that keeps replies caveman-short, trims noisy output, guards the context window and routes sub-agents to cheaper models.",
   "owner": { "name": "AGregDev" },
   "plugins": [
     {
       "name": "tokensaver",
       "source": "./",
-      "description": "Clawd, a token-saving assistant: trims noisy tool output and pasted logs before they fill your context, one-click compaction, cold-cache warnings, and sub-agent model routing."
+      "description": "Clawd, a token-saving assistant: the built-in caveman voice for terse replies, trims noisy tool output and pasted logs before they fill your context, one-click compaction, cold-cache warnings, and sub-agent model routing."
     }
   ]
 }

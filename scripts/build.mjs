@@ -22,7 +22,9 @@ const SHIPPED = [
   'commands',
   'src',
   'types',
+  'third_party',
   'README.md',
+  'CHANGELOG.md',
   'LICENSE',
 ]
 
@@ -30,7 +32,8 @@ const SHIPPED = [
 const ALLOWED_HOOKS = [
   'agent.spawn',
   'command.run{command=tokensaver}',
-  'command.run{command=tokensaver:status|tokensaver:dashboard|tokensaver:doctor|tokensaver:on|tokensaver:off|tokensaver:dry-run|tokensaver:help|tokensaver:compact|tokensaver:trim}',
+  'command.run{command=tokensaver:status|tokensaver:dashboard|tokensaver:doctor|tokensaver:on|tokensaver:off|tokensaver:dry-run|tokensaver:help|tokensaver:compact|tokensaver:trim|tokensaver:caveman}',
+  'prompt.compose',
   'prompt.submit',
   'session.append{door=response}',
   'session.append{door=tool-result}',
