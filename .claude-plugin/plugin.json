@@ -1,6 +1,6 @@
 {
   "name": "tokensaver",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Clawd, a token-saving assistant: has Claude answer in the caveman voice (fewer words, every fact kept), trims noisy tool output and pasted logs before they fill your context, tells you when to compact (and does it in one click), warns when the prompt cache goes cold, and routes sub-agents to cheaper models.",
   "author": {
     "name": "AGregDev",
