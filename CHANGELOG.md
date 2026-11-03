@@ -2,8 +2,8 @@
 
 ## 0.5.1
 
-- The `/tokensaver:*` command files can no longer be invoked by Claude as skills. Under `claude -p`, Claude used to pick one up and wrongly report that the mod was not loaded.
-- README: under `claude -p` and the SDK, use the `/tokensaver:doctor` form of a command.
+- The `/tokensaver:*` command files can no longer be invoked by Claude as skills. When a command reached Claude as text, Claude could pick one up and wrongly report that the mod was not loaded.
+- README: in Git Bash, `claude -p "/tokensaver doctor"` is rewritten into a Windows path; set `MSYS_NO_PATHCONV=1` or use `/tokensaver:doctor`.
 - Checked live: with the voice on, one sample answer used 293 output tokens instead of 523 (44% fewer).
 
 ## 0.5.0
