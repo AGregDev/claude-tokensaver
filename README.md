@@ -332,7 +332,7 @@ It does not call a model, start a sub-agent or a process, make a network request
 ## Limits worth knowing
 
 - The caveman voice is an instruction, not a filter: Claude follows it closely, but no reply is rewritten after the fact. If you also have the Caveman plugin installed, turn one of them off (`/tokensaver caveman off`, or disable the plugin), or Claude reads both sets of rules.
-- Under `claude -p` and the SDK, `/tokensaver doctor` reaches Claude as plain text, because the command is registered once the session has started. Use the `/tokensaver:doctor` form there (and `:status`, `:caveman`… for the others).
+- In Git Bash on Windows, `claude -p "/tokensaver doctor"` reaches Claude as a Windows path (`C:/Program Files/Git/tokensaver doctor`), because Git Bash rewrites an argument that starts with `/`. Set `MSYS_NO_PATHCONV=1`, use PowerShell, or use the `/tokensaver:doctor` form, which Git Bash leaves alone.
 - On a plan billed per request rather than per token, shorter replies save nothing, and the voice's ~660 tokens of rules are pure cost. Turn it off there.
 - The trimmer reads shapes, not meaning. Under `full`, a huge output keeps its head, tail and error lines, and a long run of look-alike lines is folded; if Claude needs a line that was cut, the note in the output tells it to re-run with a filter. Set `trimLevel` to `lossless` if you never want lines dropped.
 - Token counts are estimated at about 4 characters a token.
