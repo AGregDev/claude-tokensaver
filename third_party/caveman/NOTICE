@@ -1,0 +1,22 @@
+Caveman
+Copyright 2026 Julius Brussee
+https://github.com/juliusbrussee/caveman
+
+tokensaver's caveman voice (src/core/caveman.ts) is adapted from Caveman's
+`caveman` and `ultracave` skills (skills/caveman/SKILL.md and
+skills/ultracave/SKILL.md, Caveman 4.0.1, commit 2e068f7), used under the
+Apache License, Version 2.0 (LICENSE in this folder).
+
+Changes made for tokensaver: the two skills are condensed into system-prompt
+sections; their persistence and switch instructions name tokensaver's
+`/tokensaver caveman` command instead of Caveman's slash commands and hooks;
+the statusline, mode-tracking and stats hooks are not included. The sub-agent
+report note and the terse compaction summary are tokensaver's own.
+
+Before Caveman 3.0.0 the skill was licensed under the MIT License, and
+contributions made to it then remain available under it. Its copyright and
+permission notice is kept in LICENSE-MIT in this folder.
+
+"Caveman" is a trademark of Julius Brussee. tokensaver is not affiliated with
+or endorsed by the Caveman project; the name is used only to say where the
+voice's rules come from.

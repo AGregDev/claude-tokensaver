@@ -19,12 +19,13 @@ npm run check
 ```text
 .claude-plugin/     plugin.json (the manifest) and marketplace.json
 hooks/register.tsx  the hooks module: the only file that touches Claude Code's API
-src/core/           the output trimmer, the context guardian, and routing: scoring, escalation, tuning, the log (pure)
+src/core/           the caveman voice, the output trimmer, the context guardian, and routing: scoring, escalation, tuning, the log (pure)
 src/runtime/        Clawd (assistant.ts) and the router (session.ts): one pure transition per event
 src/ui/             Clawd's pictures and glyph art, the sub-agent strip, the view model
 types/index.d.ts    the mod's $.state contract
 tests/              *.spec.ts run under Vitest; engine/*.test.ts run inside Claude Code
 tests/fixtures/     realistic noisy outputs; tests/bench/ holds the trimmer's floors
+third_party/        licenses and notices of code adapted from elsewhere (Caveman)
 scripts/            types sync, build audit, bench, packaging, README pictures
 ```
 

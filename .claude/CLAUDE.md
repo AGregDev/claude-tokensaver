@@ -2,6 +2,7 @@
 
 A Claude Code mod. Clawd, Claude Code's pixel mascot, acts as a token-saving assistant. It:
 
+- has Claude answer in the caveman voice (rules adapted from Caveman, Apache-2.0), and asks sub-agents and compaction summaries for the same;
 - trims noisy shell output and pasted logs before they're stored in the conversation;
 - warns as the context fills, and compacts in one click;
 - warns when the prompt cache has gone cold;
@@ -15,6 +16,7 @@ The README is the user-facing contract. This file is for working on the code.
 hooks/register.tsx   the only file that touches Claude Code's API: events in, effects out, drawing
 src/core/            pure logic, no Claude Code imports
   trim.ts            the output trimmer (the biggest real saver)
+  caveman.ts         the caveman voice: its rules, switch phrases, report/summary notes, reply tallies
   guardian.ts        context-fill levels, cold-cache maths, compaction instructions
   score/route/escalate/tune/delegate/log/savings/tiers.ts   sub-agent routing and its learning
 src/runtime/
@@ -23,6 +25,7 @@ src/runtime/
 src/ui/              clawd.ts (SVG and glyph art), band.ts (sub-agent strip), view.ts, format.ts, theme.ts
 tests/               *.spec.ts run under Vitest; tests/engine/*.test.ts run inside Claude Code
 tests/fixtures/      realistic noisy outputs for the trimmer benchmark
+third_party/caveman/ Caveman's license and notice; keep them when the rules change
 scripts/             types sync, build audit, bench, packaging, README pictures
 ```
 
@@ -44,6 +47,7 @@ npm run preview                     # regenerate docs/*.svg from the real render
 - **The reach audit.** `scripts/build.mjs` lists every event hooked and every `$` call made. If either changes, the build fails until you update that list *and* the "What it can reach" table in README.md.
 - **The trimmer never touches what the user asked to see.** Errors are never folded or cut. File reads, searches and failed results are never trimmed. Output of inspecting commands (`grep`, `cat`, `ls`, `git diff`…) is only trimmed losslessly. Any change to `trim.ts` must keep `tests/bench/trim.spec.ts` passing (floors, kept lines, speed). Paste `npm run bench` before and after into the PR.
 - **Validator rules for `register.tsx`.** `$` may only be passed to functions declared at the top level of the module, not to closures inside `register`. Names given to `$.env.get` and `$.command.register` must be string literals.
+- **The caveman voice is Apache-2.0 text.** `src/core/caveman.ts` adapts Caveman's skills; if you change the rules, keep the attribution header and update "Changes made" in `third_party/caveman/NOTICE`. Keep the rules section under ~800 tokens (`tests/core/caveman.spec.ts` checks it): it is sent with every request.
 - **No type assertions (`as`)** beyond `as const`; the lint is strict and type-checked. Booleans are named `is…`/`has…`/`should…`.
 - **No runtime dependencies.** Shipped code imports only its own files and `claude-code`.
 

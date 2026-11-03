@@ -1,8 +1,8 @@
 {
   "name": "claude-tokensaver",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
-  "description": "Claude Code mod that routes sub-agents to the cheapest capable model tier, escalates on failure, and shows live token savings.",
+  "description": "Claude Code mod: Clawd saves tokens with the built-in caveman voice, output trimming, context and cold-cache warnings, one-click compaction and sub-agent model routing.",
   "license": "MIT",
   "type": "module",
   "engines": {

@@ -5,8 +5,9 @@
 
 A [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that puts **Clawd**, Claude Code's pixel mascot, to work as your token-saving assistant.
 
-Most token waste in a long session isn't the work itself. It's noise that piles up in the context and is re-sent with every request: install logs, progress bars, colour codes, a test runner printing the same warning 400 times. On top of that, a big context gets re-cached at full price after the prompt cache expires. Clawd goes after both:
+Most token waste in a long session isn't the work itself. It's noise that piles up in the context and is re-sent with every request: install logs, progress bars, colour codes, a test runner printing the same warning 400 times, and replies padded with preamble and recap. On top of that, a big context gets re-cached at full price after the prompt cache expires. Clawd goes after all of it:
 
+- **Has Claude talk like a caveman.** The [Caveman](https://github.com/juliusbrussee/caveman) voice is built in: Claude answers first, drops the ceremony and filler, and keeps every code span, path, number and error exact. Sub-agent reports and compaction summaries come back terse too, so the context they leave behind is smaller. Switch it with `/tokensaver caveman on|ultra|off`, or by typing `stop caveman`.
 - **Eats noise before it is stored.** Shell output is trimmed before it enters the conversation, so the model reads it once in its tidy form, and every later request carries the smaller version.
 - **Tidies logs you paste.** The same cleanup for logs in your prompts. It is lossless, and your own writing is never touched.
 - **Guards the context window.** Clawd speaks up as the context crosses 70% and 85%, and gives you a one-click **Compact now** that keeps your current task in focus. Auto-compact between turns is available if you opt in.
@@ -32,11 +33,12 @@ Measured by `npm run bench` on the realistic outputs in [tests/fixtures/outputs.
 | `npm install` with deprecation spam and progress frames | 4,337 | 221 | 95% | 3,977 |
 | A jest run: 260 passes, 1 failure | 3,759 | 160 | 96% | 3,106 |
 | `cargo build` with 340 crates and a type error | 2,809 | 102 | 96% | 2,809 |
-| `docker build` progress | 2,228 | 983 | 56% | 2,228 |
+| `docker build` progress | 2,228 | 110 | 95% | 2,228 |
+| `pip install` with download bars | 2,564 | 112 | 96% | 2,564 |
 | A 2,400-line server log with one error | 42,808 | 145 | ~100% | 42,808 |
 | `git diff --stat` (clean output) | 353 | 353 | 0% | 353 |
 
-Trimming a megabyte of mixed noise takes about 30 ms.
+Trimming a megabyte of mixed noise takes 30 to 50 ms.
 
 ## Install
 
@@ -68,6 +70,28 @@ Then start a new session (or run `/reload-plugins`). `/tokensaver doctor` says w
 A mod is code that runs with your permissions. Before you install any mod, you can list what it hooks and calls without running it: clone the repository and run `claude plugin validate .` in it. [What it can reach](#what-it-can-reach) has tokensaver's list.
 
 ## What it does
+
+### Answers in the caveman voice
+
+Every output token is billed, and every reply stays in the context, re-sent with each request after it. So tokensaver tells Claude to answer the way [Caveman](https://github.com/juliusbrussee/caveman) does: answer first, then the reason, then the next step. No greeting, hedging, recap or closer. Short words, fragments where they read in one pass, one idea per sentence.
+
+The rules guard what matters. Code, commands, paths, API names, numbers and errors stay verbatim, and `not`, `never`, `no`, `only` and `except` are never dropped. Claude switches back to full sentences, then resumes, for a security warning, an irreversible action, a step order a fragment could scramble, a question it puts to you, and anything written outside the chat: code, comments, commits, pull requests, docs.
+
+| Voice | What Claude does |
+| :- | :- |
+| `on` (default) | Caveman's own voice: terse, every fact kept |
+| `ultra` | Caveman's `ultracave`: fragments, one word where one word is enough, each fact once |
+| `off` | Claude's normal voice |
+
+Switch it with `/tokensaver caveman on|ultra|off` (alone, it toggles), the **Caveman** button in the pane, or the `caveman` option. A prompt that is nothing but a switch phrase works too: `stop caveman`, `normal mode`, `caveman mode`, `caveman ultra`. Claude is told about the switch and confirms it in one line. A longer prompt that only mentions a phrase ("put vim back in normal mode") is a task, not a switch.
+
+The voice reaches three places:
+
+- **Claude's replies.** The rules ride in the system prompt as tokensaver's own section, after the cache boundary, so the shared part of the prompt stays cached. Switching the voice re-writes the rest of the cache once, on the next request.
+- **Sub-agent reports.** A sub-agent Claude starts is asked to report back terse, because its report lands in the main context. Forks (which read the parent's prompt), teammates and workflow agents are left alone.
+- **Compaction summaries.** Any compaction of the main conversation, yours, Claude Code's or Clawd's, asks for the summary in the same voice, keeping every path, command, decision and error. The summary is re-sent with every request after it.
+
+What it costs and saves, honestly: the rules are about 660 tokens of system prompt (Caveman's own skill is about 1,160), read from the cache on most requests. How much shorter the replies get depends on the model and the work; Caveman's [own measurements](https://github.com/juliusbrussee/caveman#readme) and its [honest numbers](https://github.com/juliusbrussee/caveman/blob/main/docs/HONEST-NUMBERS.md) range from a few percent over a "be concise" baseline for the default voice to about a third for ultra. So tokensaver measures it on your own sessions: it keeps the average output per finished reply under each voice, and once both voices have five replies, `/tokensaver` and the pane show the two side by side.
 
 ### Trims tool output before it is stored
 
@@ -142,7 +166,7 @@ The comparison uses measured numbers, not guesses:
 
 How much reading a task means is estimated from the files the prompt names and, for a broad task, from the size of the repository, which tokensaver samples once per session (file names only, never contents). So "find every usage across the repo" earns a suggestion in a 600-file repository and none in a 40-file one, where a single search is cheaper than any sub-agent.
 
-When delegating wins by a clear margin, tokensaver adds one line to the prompt: about how many files, and to use one Explore sub-agent or up to three in parallel. Claude makes the final call, because it can see the code and tokensaver cannot. That line is the only thing tokensaver ever adds to the model's context for a prompt, and its cost is subtracted from the savings counter.
+When delegating wins by a clear margin, tokensaver adds one line to the prompt: about how many files, and to use one Explore sub-agent or up to three in parallel. Claude makes the final call, because it can see the code and tokensaver cannot. Apart from a one-line note when you switch the caveman voice, that line is the only thing tokensaver adds to the model's context for a prompt, and its cost is subtracted from the savings counter.
 
 tokensaver never starts a sub-agent itself. A sub-agent that a mod starts has not been through the safety review Claude's own actions get, and Claude Code refuses it in auto mode. Delegation stays Claude's own action.
 
@@ -173,12 +197,12 @@ Clawd lives in three places, and its mood follows the session:
 | sleepy | the prompt cache went cold | eyes shut, Zzz |
 | alert | a helper failed and was escalated | shakes, with a red `!` |
 
-- **The pane** (desktop app: opens by itself; terminal: `/tokensaver dashboard`): animated Clawd with a speech bubble, a context meter whose hatched segment shows what the context would hold without the trims, four savings tiles, buttons (Compact now, Trimming on/off, Paste tidy on/off, power), and an activity feed. In the terminal, Clawd is drawn in block glyphs.
+- **The pane** (desktop app: opens by itself; terminal: `/tokensaver dashboard`): animated Clawd with a speech bubble, a context meter whose hatched segment shows what the context would hold without the trims, four savings tiles, the caveman voice's measured effect, buttons (Compact now, Caveman on/ultra/off, Trimming on/off, Paste tidy on/off, power), and an activity feed. In the terminal, Clawd is drawn in block glyphs.
 - **The band above the prompt** appears for a few seconds after Clawd does something, and stays up with a **Compact now** button while the context is heavy or the cache is cold. While helpers run, the sub-agent strip shows beneath it.
 
   ![The sub-agent strip: two helpers running on haiku](docs/strip.svg)
 
-- **The status line**: tokens used, noise eaten, re-sends avoided, context fill.
+- **The status line**: tokens used, noise eaten, re-sends avoided, context fill, and `caveman` while the voice is on.
 - **Transcript rows**: a trimmed shell row says how much was eaten; a routed sub-agent's row shows its tier.
 
 Animation is CSS inside the picture, so it costs nothing while idle. `reducedMotion` (or `/tokensaver motion off`) stills everything, and `NO_COLOR` removes every colour from the text views.
@@ -193,6 +217,7 @@ All of them are estimates (about 4 characters to a token). They are kept apart b
 - **Re-sends avoided**: noise eaten, times the main-loop requests made since it was cut, until the next compaction. Re-sent context is usually read from the cache at a fraction of the price, so read this figure as context relief, not as money.
 - **Freed by compacting**: the size before minus the size after, for each compaction Clawd saw.
 - **Routing & delegation**: tokens a sub-agent used on a cheaper tier, weighted by relative cost (Haiku 1, Sonnet 3, Opus 5), plus the work delegated sub-agents kept out of the main context.
+- **Caveman voice**: the average output tokens of a finished main-loop reply under each voice, all-time, as Claude Code reports them. It is measured, not estimated, but your tasks differ from reply to reply, so read it as a trend over many replies.
 
 ## Commands
 
@@ -200,6 +225,7 @@ All of them are estimates (about 4 characters to a token). They are kept apart b
 | :- | :- |
 | `/tokensaver` | Status: what Clawd ate, re-sends avoided, context, routing |
 | `/tokensaver compact` | Compact now, with focus instructions from your recent asks |
+| `/tokensaver caveman [on\|ultra\|off]` | The caveman voice; alone, it toggles on and off |
 | `/tokensaver trim [on\|off]` | Trim noisy shell output before it is stored |
 | `/tokensaver pastes [on\|off]` | Tidy pasted logs in your prompts |
 | `/tokensaver autocompact <0-95>` | Compact between turns past this fill %; 0 means never |
@@ -213,7 +239,7 @@ All of them are estimates (about 4 characters to a token). They are kept apart b
 | `/tokensaver reset` | Clear the routing log and the learned thresholds |
 | `/tokensaver help` | List the commands |
 
-Switches set with a command are remembered across sessions. `/tokensaver:status`, `:compact`, `:trim`, `:dashboard`, `:doctor`, `:on`, `:off`, `:dry-run` and `:help` are listed in the `/` menu from the very first prompt.
+Switches set with a command are remembered across sessions. `/tokensaver:status`, `:compact`, `:caveman`, `:trim`, `:dashboard`, `:doctor`, `:on`, `:off`, `:dry-run` and `:help` are listed in the `/` menu from the very first prompt.
 
 ## Options
 
@@ -222,6 +248,7 @@ Set these when you install, or later with `/plugin configure tokensaver@claude-t
 | Option | Default | What it does |
 | :- | :- | :- |
 | `enabled` | `true` | Master switch |
+| `caveman` | `on` | The caveman voice: `on`, `ultra` or `off` |
 | `trimOutput` | `true` | Trim noisy shell output before it is stored |
 | `trimLevel` | `full` | `lossless` only removes what carries no information; `full` also folds look-alike lines and caps huge outputs |
 | `maxOutputLines` | `300` | Under `full`, longer outputs keep their head, tail and error lines |
@@ -276,10 +303,11 @@ This is the complete list, as `claude plugin validate` reads it from the source.
 | `session.start` | Load the log and settings, register `/tokensaver`, sample the repository's size |
 | `session.append` on Claude's responses | Note which command each shell call ran (read only), so a search's output is never folded |
 | `session.append` on tool results only | Trim shell output before it is stored |
-| `session.compact` | Book what a compaction freed, and calm Clawd down |
+| `session.compact` | Ask for a terse summary while the caveman voice is on; book what a compaction freed, and calm Clawd down |
 | `session.attach` | Redraw when an app connects to the session |
-| `prompt.submit` | Tidy a pasted log; score the prompt; add the delegation line when it pays |
-| `agent.spawn` | Choose the sub-agent's model |
+| `prompt.compose` | Add the caveman voice's rules to the system prompt, as its last section, while the voice is on |
+| `prompt.submit` | Tidy a pasted log; switch the voice on a switch phrase; score the prompt; add the delegation line when it pays |
+| `agent.spawn` | Choose the sub-agent's model; ask it for a terse report while the voice is on |
 | `tool.call` on `Agent` only | Read the result; retry once one tier up when it fails |
 | `turn.step`, `turn.complete`, `session.measure` | Read token usage for the meter, and count how much the main loop reads itself |
 | `command.run` for `tokensaver` | Answer its own command |
@@ -299,10 +327,12 @@ This is the complete list, as `claude plugin validate` reads it from the source.
 | `$.command.run` | Only `/compact`, with the same instructions, when the session refuses a direct compaction (headless: VS Code, Cursor, the SDK) |
 | `$.command.register`, `$.session.surfaces`, `$.session.model` | Its command; telling the CLI from the desktop app; knowing which model the session runs on |
 
-It does not call a model, start a sub-agent or a process, make a network request, read the contents of your files, or change a permission. The only text it changes is shell output and pasted logs on their way into the conversation, as described above.
+It does not call a model, start a sub-agent or a process, make a network request, read the contents of your files, or change a permission. The only text it changes is shell output and pasted logs on their way into the conversation; the only text it adds is the caveman voice's section of the system prompt, one note at the end of a sub-agent's task and of a compaction's instructions, and the one-line notes described above.
 
 ## Limits worth knowing
 
+- The caveman voice is an instruction, not a filter: Claude follows it closely, but no reply is rewritten after the fact. If you also have the Caveman plugin installed, turn one of them off (`/tokensaver caveman off`, or disable the plugin), or Claude reads both sets of rules.
+- On a plan billed per request rather than per token, shorter replies save nothing, and the voice's ~660 tokens of rules are pure cost. Turn it off there.
 - The trimmer reads shapes, not meaning. Under `full`, a huge output keeps its head, tail and error lines, and a long run of look-alike lines is folded; if Claude needs a line that was cut, the note in the output tells it to re-run with a filter. Set `trimLevel` to `lossless` if you never want lines dropped.
 - Token counts are estimated at about 4 characters a token.
 - The cold-cache warning goes by the clock: it cannot see the cache itself, so set `cacheTtlMinutes` to your plan's cache lifetime.
@@ -334,6 +364,12 @@ claude --plugin-dir .
 
 Working with Claude Code on this repository: [.claude/CLAUDE.md](.claude/CLAUDE.md) holds the layout, the rules and the engine quirks, and the `verify-tokensaver` skill in `.claude/skills/` walks an agent through checking a change end to end, live test included.
 
+## Credits
+
+The caveman voice's rules are adapted from [Caveman](https://github.com/juliusbrussee/caveman) by Julius Brussee, under the Apache License 2.0. [third_party/caveman](third_party/caveman) holds its license, its notice and what was changed. tokensaver is not affiliated with or endorsed by the Caveman project; the name says where the voice comes from.
+
+Clawd is Claude Code's own mascot.
+
 ## License
 
-[MIT](LICENSE)
+tokensaver is [MIT](LICENSE). The adapted Caveman rules in `src/core/caveman.ts` remain under the [Apache License 2.0](third_party/caveman/LICENSE).
